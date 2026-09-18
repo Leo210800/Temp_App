@@ -114,6 +114,9 @@ tablas de estadísticas (diarias, mensuales, mapa de calor, distribución, perfi
 y combinadas) para servir las gráficas de forma instantánea. Ver el
 [modelo de datos](Backend/docs/ARCHITECTURE.md#3-modelo-de-datos).
 
+
+
+
 ---
 
 ## 🛠️ Próximas funcionalidades
@@ -121,3 +124,10 @@ y combinadas) para servir las gráficas de forma instantánea. Ver el
 - Gráfico psicrométrico
 - Exportación de resultados a Excel
 - Comparación entre estaciones
+
+
+
+https://github.com/user-attachments/assets/88390536-3c65-46a7-b1d8-35d1a7763416
+
+
+
