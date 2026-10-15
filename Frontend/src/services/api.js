@@ -75,6 +75,12 @@ export const measurementsApi = {
 
   combined: (p = {}) =>
     req(`/measurements/combined?${new URLSearchParams(clean(p))}`),
+
+  hrTemporal: (p = {}) =>                                                 // ← HR por periodo/hora/mes (b.3)
+    req(`/measurements/hr-temporal?${new URLSearchParams(clean(p))}`),
+
+  hrPeriodFit: (p = {}) =>                                                // ← ajuste Beta de un periodo (b.3)
+    req(`/measurements/hr-temporal/period-fit?${new URLSearchParams(clean(p))}`),
 }
 
 // ── Uploads ───────────────────────────────────────────────────
@@ -119,4 +125,4 @@ export const localAnalysisApi = {
     }
     return res.json()
   },
-}
+}

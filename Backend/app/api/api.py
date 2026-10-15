@@ -6,7 +6,8 @@ from app.api.routes import (
     measurements,
     charts,
     analysis,
-    local_analysis
+    local_analysis,
+    hr_temporal,
 )
 
 api_router = APIRouter()
@@ -31,6 +32,14 @@ api_router.include_router(
     tags=["Charts"]
 )
 
+# Análisis temporal de HR (desarrollo-leo). También antes del catch-all de
+# measurements, por la misma razón que charts.
+api_router.include_router(
+    hr_temporal.router,
+    prefix="/measurements",
+    tags=["HR temporal"]
+)
+
 api_router.include_router(
     measurements.router,
     prefix="/measurements",
@@ -47,4 +56,4 @@ api_router.include_router(
     local_analysis.router,   
     prefix="/local-analysis", 
     tags=["local-analysis"]
-)
+)

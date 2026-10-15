@@ -8,6 +8,8 @@ import {
 } from 'recharts'
 import { stationsApi, measurementsApi } from '../services/api'
 import { Loader2, AlertTriangle, RefreshCw, Download, CloudSun } from 'lucide-react'
+import SectionHRTemporal from './analysis/SectionHRTemporal'
+import HRValidationPanel from './analysis/HRValidationPanel'
 
 const SPIN = { animation: 'spin 0.8s linear infinite' }
 
@@ -20,6 +22,7 @@ const TABS = [
   { id: 'fdp',            label: 'b) FDP'                     },
   { id: 'summary-table',  label: 'b.1) Tabla resumen'         },
   { id: 'data-table',     label: 'b.2) Tabla base'            },
+  { id: 'hr-temporal',    label: 'b.3) HR temporal'           },
   { id: 'isolines',       label: 'c.1) Mapa de calor'         },
   { id: 'daily-profile',  label: 'c.2) Perfil diario'         },
   { id: 'annual-profile', label: 'c.3) Perfil anual'          },
@@ -1001,6 +1004,7 @@ function SectionFDP({ stationId, dateFrom, dateTo }) {
             <StatBox label="Err máx" value={hStats.quality?.max_error_range?.toFixed(5) ?? '—'} color={hStats.quality?.error_range_ok ? '#22c55e' : '#ef4444'} />
             <StatBox label="Σw"      value={hStats.quality?.weights_sum?.toFixed(4) ?? '—'} color={hStats.quality?.weights_sum_ok ? '#22c55e' : '#ef4444'} />
           </div>
+          <HRValidationPanel fdp={hStats.fdp} betas={hStats.betas ?? []} />
         </SectionCard>
       )}
 
@@ -2916,6 +2920,7 @@ export default function Analysis() {
           {activeTab === 'fdp'            && <SectionFDP           stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'summary-table'  && <SectionSummaryTable  stationId={stationId} stationName={selectedStation?.name} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'data-table'     && <SectionDataTable     stationId={stationId} stationName={selectedStation?.name} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
+          {activeTab === 'hr-temporal'    && <SectionHRTemporal    stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'isolines'       && <SectionIsolines      stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'daily-profile'  && <SectionDailyProfile  stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'annual-profile' && <SectionAnnualProfile stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
@@ -2929,4 +2934,4 @@ export default function Analysis() {
       )}
     </div>
   )
-}
+}
