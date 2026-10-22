@@ -10,6 +10,16 @@ class StationCreate(BaseModel):
     institution:     str   | None = None
 
 
+class StationUpdate(BaseModel):
+    """Edición parcial: solo se actualizan los campos enviados."""
+    station_code:    str   | None = None
+    name:            str   | None = None
+    latitude:        float | None = None
+    longitude:       float | None = None
+    altitude_meters: float | None = None
+    institution:     str   | None = None
+
+
 class StationResponse(StationCreate):
     id: str
 

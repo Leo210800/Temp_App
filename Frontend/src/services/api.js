@@ -29,6 +29,19 @@ export const stationsApi = {
       method: 'POST',
       body: JSON.stringify(d),
     }),
+  update: (id, d) =>
+    req(`/stations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(d),
+    }),
+  remove: (id) =>
+    req(`/stations/${id}`, { method: 'DELETE' }),
+  usage: (id) => req(`/stations/${id}/usage`),
+  files: (id) => req(`/stations/${id}/files`),
+  recalculate: (id) =>
+    req(`/stations/${id}/recalculate`, { method: 'POST' }),
+  removeFile: (id, fileId) =>
+    req(`/stations/${id}/files/${fileId}`, { method: 'DELETE' }),
   analysis: (id, params = {}) =>
     req(`/stations/${id}/analysis?${new URLSearchParams(clean(params))}`),
 }
@@ -125,4 +138,4 @@ export const localAnalysisApi = {
     }
     return res.json()
   },
-}
+}

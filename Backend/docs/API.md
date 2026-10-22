@@ -15,6 +15,11 @@ son JSON. La documentación interactiva (Swagger UI) está en `/docs`.
 | GET    | `/stations/`                  | Lista todas las estaciones                   |
 | POST   | `/stations/`                  | Crea una estación (valida código duplicado)  |
 | GET    | `/stations/{station_id}`      | Obtiene una estación por UUID                |
+| PUT    | `/stations/{station_id}`      | Edita una estación (parcial; valida código)  |
+| GET    | `/stations/{station_id}/usage`| Nº de mediciones y archivos de la estación   |
+| DELETE | `/stations/{station_id}`      | Elimina la estación, sus mediciones y stats  |
+| GET    | `/stations/{station_id}/files`| Archivos con mediciones en la estación       |
+| DELETE | `/stations/{station_id}/files/{file_id}` | Borra las mediciones de un archivo y recalcula stats |
 
 **POST `/stations/`** — body:
 ```json
@@ -27,6 +32,28 @@ son JSON. La documentación interactiva (Swagger UI) está en `/docs`.
   "institution": "IMN"
 }
 ```
+
+**PUT `/stations/{station_id}`** — mismo body que POST, pero todos los campos son
+opcionales; solo se cambian los que se envían. `altitude_meters` e `institution`
+se pueden enviar como `null` para vaciarlos.
+
+**DELETE `/stations/{station_id}`** — borra en una sola transacción las
+mediciones, todas las tablas de estadísticas precalculadas y los registros de
+`uploaded_files` que queden sin mediciones. Respuesta:
+```json
+{ "deleted": true, "station_id": "…", "measurements_deleted": 87600, "files_deleted": 2 }
+```
+
+**DELETE `/stations/{station_id}/files/{file_id}`** — borra las mediciones que el
+archivo aporta a la estación y recalcula, por cada variable afectada, las mismas
+tablas que se calculan al subir un archivo. Si una variable se queda sin
+mediciones, sus estadísticas se eliminan; si falta TEMP o HR, se elimina
+`combined_stats`. `recalc_ok: false` indica que el borrado se hizo pero parte del
+recálculo falló (ver `logs`).
+
+> Al subir un archivo, las mediciones con la misma estación + variable +
+> fecha-hora se sobrescriben y pasan al archivo nuevo. Borrar ese archivo deja
+> esas fechas vacías; no restaura los valores del archivo anterior.
 
 ---
 
