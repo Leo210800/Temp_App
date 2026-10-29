@@ -3,7 +3,7 @@ import { useFetch } from "../hooks/useFetch"
 import { stationsApi, uploadsApi } from "../services/api"
 import {
   Thermometer, Droplets, Wind, FolderOpen, FileText, X,
-  AlertTriangle, Info, CircleCheckBig, CircleX,
+  AlertTriangle, Info, CircleCheckBig, CircleX, ChevronDown, ChevronRight, Download,
 } from "lucide-react"
 
 const VARIABLES = [
@@ -11,6 +11,108 @@ const VARIABLES = [
   { key: "humedad",     code: "HR",     label: "Humedad Relativa", Icon: Droplets,    color: "#3b82f6" },
   { key: "viento",      code: "VIENTO", label: "Viento",           Icon: Wind,        color: "#22c55e" },
 ]
+
+// ── Guía de formato para los usuarios de la versión beta ─────────────
+const EJEMPLO_CSV = [
+  "anio;mes;dia;" + Array.from({ length: 24 }, (_, i) => `H${i + 1}`).join(";"),
+  "2024;1;1;88,2;89,0;90,1;91,3;92,0;-;85,4;78,9;70,2;64,8;60,1;57,3;55,0;54,8;56,2;60,5;66,9;73,4;78,8;82,1;84,6;86,0;87,1;87,9",
+  "2024;1;2;88,5;89,4;90,0;91,8;92,4;93,0;86,1;79,5;71,0;65,2;60,9;58,0;56,1;55,5;57,0;61,2;67,5;74,0;79,1;82,8;85,0;86,4;87,5;88,1",
+].join("\r\n")
+
+const descargarEjemplo = () => {
+  const blob = new Blob([EJEMPLO_CSV], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url; a.download = "Humedad_Ejemplo_2024.csv"; a.click()
+  URL.revokeObjectURL(url)
+}
+
+const REGLAS = [
+  ["Un archivo por variable", "El nombre del archivo debe decir la variable: Humedad, Temperatura o Viento. Ej.: Humedad_Nicoya_2024.csv"],
+  ["Encabezado", "anio;mes;dia;H1;H2;…;H24 (escribir anio sin ñ; también sirven year, month, day)"],
+  ["Separador", "Punto y coma (;). En Excel: Guardar como → CSV delimitado por punto y coma, o subir el .xlsx"],
+  ["Decimales", "Con coma o con punto: 88,2 o 88.2"],
+  ["Datos faltantes", "Guion (-) o celda vacía; no inventar valores"],
+  ["Horas", "H1 = 01:00 … H24 = medianoche (se guarda como las 00:00 del día siguiente). No usar 01:00, 02:00 con cero adelante"],
+  ["Humedad relativa", "En %, de 0 a 100; quitar valores negativos o mayores a 100 antes de subir"],
+]
+
+const ERRORES = [
+  ["Tipo de variable no detectado", "Renombrar el archivo con la variable, por ejemplo Humedad_Nicoya_2024.csv"],
+  ["No se pudo parsear el archivo", "Revisar el encabezado (anio, mes, dia, H1…H24) y que el separador sea punto y coma"],
+  ["Se cargaron menos datos de lo esperado", "Las horas están escritas 01:00, 02:00…; cambiarlas a H1…H24"],
+  ["La variable detectada es otra", "El nombre menciona dos variables; dejar solo una"],
+]
+
+function GuiaFormato() {
+  const [abierta, setAbierta] = useState(false)
+  const th = { textAlign: "left", padding: "6px 8px", color: "var(--text-muted)", fontWeight: 600, borderBottom: "1px solid var(--border, #272d37)" }
+  const td = { padding: "6px 8px", verticalAlign: "top", borderBottom: "1px solid var(--border, #272d37)" }
+  return (
+    <div className="alert alert--info" style={{ fontSize: 12, flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Info size={16} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1 }}><strong>Formato esperado:</strong> separador punto y coma (;) · columnas anio, mes, dia, H1…H24 · valores faltantes con guion (-) · el nombre del archivo dice la variable</span>
+        <button type="button" className="btn btn--ghost" onClick={() => setAbierta(a => !a)} style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {abierta ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {abierta ? "Ocultar guía" : "Ver guía de formato"}
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={descargarEjemplo} style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <Download size={14} /> CSV de ejemplo
+        </button>
+      </div>
+
+      {abierta && (
+        <div style={{ display: "grid", gap: 14, color: "var(--text, #e7eaf0)" }}>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Pasos</div>
+            <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+              <li>Verificar que la estación exista (menú Estaciones → Nueva estación).</li>
+              <li>Elegir la estación arriba: los datos quedan guardados en la estación elegida.</li>
+              <li>Arrastrar cada archivo a su recuadro: Temperatura, Humedad Relativa o Viento.</li>
+              <li>Revisar la vista previa y la variable detectada antes de subir.</li>
+              <li>Pulsar Subir y esperar: la app recalcula las estadísticas al terminar.</li>
+              <li>Probar primero con un archivo pequeño (un mes) y revisarlo en Análisis.</li>
+            </ol>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Ejemplo (una fila por día, 24 columnas de horas)</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", fontFamily: "monospace", fontSize: 11 }}>
+                <thead>
+                  <tr>{["anio", "mes", "dia", "H1", "H2", "H3", "H4", "H5", "H6", "…", "H24"].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  <tr>{["2024", "1", "1", "88,2", "89,0", "90,1", "91,3", "92,0", "-", "…", "87,9"].map((c, i) => <td key={i} style={td}>{c}</td>)}</tr>
+                  <tr>{["2024", "1", "2", "88,5", "89,4", "90,0", "91,8", "92,4", "93,0", "…", "88,1"].map((c, i) => <td key={i} style={td}>{c}</td>)}</tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Reglas</div>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <tbody>{REGLAS.map(([k, v]) => <tr key={k}><td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap" }}>{k}</td><td style={td}>{v}</td></tr>)}</tbody>
+            </table>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Errores comunes</div>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr><th style={th}>Mensaje o síntoma</th><th style={th}>Solución</th></tr></thead>
+              <tbody>{ERRORES.map(([k, v]) => <tr key={k}><td style={{ ...td, fontWeight: 600 }}>{k}</td><td style={td}>{v}</td></tr>)}</tbody>
+            </table>
+          </div>
+
+          <div style={{ color: "var(--text-muted)" }}>
+            Si se sube el mismo periodo dos veces, no se duplica: el archivo nuevo reemplaza los valores de esas fechas y horas.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const parsearCSV = (texto) => {
   const lineas = texto.trim().split("\n").filter(Boolean)
@@ -260,11 +362,8 @@ export default function Upload() {
         </label>
       </div>
 
-      {/* Info formato */}
-      <div className="alert alert--info" style={{ fontSize: 12 }}>
-        <Info size={16} style={{ flexShrink: 0 }} />
-        <span><strong>Formato esperado:</strong> separador punto y coma (;) · columnas año, mes, dia, H1…H24 · valores faltantes con guion (-)</span>
-      </div>
+      {/* Guía de formato */}
+      <GuiaFormato />
 
       {/* Drop zones */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

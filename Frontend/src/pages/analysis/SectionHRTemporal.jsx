@@ -32,6 +32,32 @@ const W_MIN = 0.01
 const hourColor  = (h) => d3.interpolateSinebow(h / 24)
 const monthColor = (m) => d3.interpolateTurbo(0.08 + 0.84 * ((m - 1) / 11))
 
+// Escala por clases con colores bien distintos (como el mapa de curva dominante):
+// 5 clases de igual ancho, cada una con su propio color, para leerlo de un vistazo.
+const LEVELS = 5
+const EMPTY_CELL = '#161a21'
+const CLASS_COLORS = ['#475569', '#38bdf8', '#4ade80', '#facc15', '#ef4444']
+const CLASS_NAMES = ['Muy poca', 'Poca', 'Media', 'Alta', 'Muy alta']
+const stepColor = (_base, t) => {
+  if (t == null || !(t > 0)) return EMPTY_CELL
+  return CLASS_COLORS[Math.min(LEVELS, Math.ceil(t * LEVELS)) - 1]
+}
+const textOn = (bg) => (d3.hsl(bg).l > 0.55 ? '#0b0d10' : '#e7eaf0')
+
+function StepLegend({ base, max, unit = '%', decimals = 0 }) {
+  const fmt = (v) => `${v.toFixed(decimals)}${unit}`
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, fontSize: 10, color: '#8b94a6' }}>
+      {Array.from({ length: LEVELS }, (_, i) => (
+        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, background: stepColor(base, (i + 1) / LEVELS) }} />
+          <b style={{ color: '#c7cdd8', fontWeight: 600 }}>{CLASS_NAMES[i]}</b> {fmt((max * i) / LEVELS)}–{fmt((max * (i + 1)) / LEVELS)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // ── UI básicos (mismo estilo que Analysis.jsx) ──────────────────
 const Card = ({ title, subtitle, right, children }) => (
   <div style={{ background: '#161a21', border: '1px solid #272d37', borderRadius: 12, padding: 20, marginBottom: 20 }}>
@@ -100,7 +126,7 @@ function PeriodPanel({ period, fit, fitting, fitError }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#e7eaf0' }}>{period.label}</div>
         <div style={{ fontSize: 11, color: '#8b94a6' }}>
-          N = {period.n.toLocaleString()} · moda {period.mode ?? '—'}% · saturada {fmtPct(period.saturated_pct)}
+          N = {period.n.toLocaleString()} · moda {period.mode ?? '—'}% · saturada {fmtPct(period.saturated_pct)} · TOW {fmtPct(period.tow_pct)}
         </div>
       </div>
       <ResponsiveContainer width="100%" height={210}>
@@ -125,7 +151,7 @@ function PeriodPanel({ period, fit, fitting, fitError }) {
         {fitError && <span style={{ color: '#ef4444' }}>{fitError}</span>}
         {fit && !fitting && (
           <span>
-            R² = {fit.r2?.toFixed(4) ?? '—'} · EMC = {fmtExp(fit.mse)} · {fit.betas.filter(b => b.w >= W_MIN).length} curvas · modas:{' '}
+            R² = {fit.r2?.toFixed(4) ?? '—'} · EMC = {fmtExp(fit.mse)} · TOW modelo {fmtPct(fit.tow_model_pct)} · {fit.betas.filter(b => b.w >= W_MIN).length} curvas · modas:{' '}
             {fit.betas.map((b, i) => (b.w >= W_MIN &&
               <span key={i} style={{ color: BETA_COLORS[i], marginRight: 6 }}>{b.mode?.toFixed(0)}%</span>
             ))}
@@ -245,10 +271,11 @@ function ComponentTimeCard({ comp, color }) {
         cellSize={14}
         cellColor={(mi, h) => {
           const v = comp.share_matrix[mi]?.[h] ?? 0
-          return d3.color(color).copy({ opacity: 0.08 + 0.92 * (v / max) }).formatRgb()
+          return stepColor(color, v / max)
         }}
         cellTitle={(mi, h) => `${MONTHS[mi]} ${String(h).padStart(2, '0')}:00 → ${((comp.share_matrix[mi]?.[h] ?? 0) * 100).toFixed(1)}% de las mediciones`}
       />
+      <StepLegend base={color} max={max * 100} decimals={max * 100 < 10 ? 1 : 0} />
       <div style={{ fontSize: 11, color: '#8b94a6', marginTop: 8, lineHeight: 1.6 }}>
         Seca {fmtPct(comp.pct_dry)} · lluviosa {fmtPct(comp.pct_rainy)}<br />
         Día {fmtPct(comp.pct_day)} · noche {fmtPct(comp.pct_night)}<br />
@@ -285,6 +312,58 @@ function TimeProfiles({ components, field, labels, xLabel }) {
 // ─────────────────────────────────────────────────────────────
 // Sección principal
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Tiempo de humectación: por periodo, por mes y mapa mes × hora
+// ─────────────────────────────────────────────────────────────
+const TOW_COLOR = '#38bdf8'
+const towBg = (v) => (v == null ? EMPTY_CELL : v <= 0 ? '#1b2029' : stepColor(TOW_COLOR, Math.min(1, v / 100)))
+
+function TowCells({ items }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, gap: 4 }}>
+      {items.map(it => (
+        <div key={it.label} title={`${it.label}: ${fmtPct(it.value)} de las horas con HR ≥ 80 %`}
+          style={{ background: towBg(it.value), borderRadius: 6, padding: '6px 2px', textAlign: 'center' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: textOn(towBg(it.value)) }}>{it.value == null ? '—' : it.value.toFixed(0)}</div>
+          <div style={{ fontSize: 10, color: textOn(towBg(it.value)), opacity: 0.8 }}>{it.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TowSummary({ data }) {
+  const periods = data.periods.map(p => ({ label: p.label.split(' ')[0], value: p.tow_pct }))
+  const months = data.months.map(m => ({ label: MONTHS[m.month - 1], value: m.tow_pct }))
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 12, color: '#8b94a6', marginBottom: 6, fontWeight: 600 }}>Por periodo del día (% de horas)</div>
+        <TowCells items={periods} />
+      </div>
+      <div>
+        <div style={{ fontSize: 12, color: '#8b94a6', marginBottom: 6, fontWeight: 600 }}>Por mes (% de horas)</div>
+        <TowCells items={months} />
+        <StepLegend base={TOW_COLOR} max={100} />
+      </div>
+      {data.tow_matrix && (
+        <div style={{ maxWidth: 520 }}>
+          <div style={{ fontSize: 12, color: '#8b94a6', marginBottom: 6, fontWeight: 600 }}>Mes × hora (% de horas húmedas, colores según la leyenda)</div>
+          <MonthHourGrid
+            cellSize={14}
+            cellColor={(mi, h) => towBg(data.tow_matrix[mi]?.[h])}
+            cellTitle={(mi, h) => `${MONTHS[mi]} ${String(h).padStart(2, '0')}:00 → ${fmtPct(data.tow_matrix[mi]?.[h])} de las horas con HR ≥ 80 %`}
+          />
+          <StepLegend base={TOW_COLOR} max={100} />
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: '#8b94a6' }}>
+        El TOW se usa para estimar la corrosión atmosférica. La norma ISO 9223 además exige temperatura mayor a 0 °C; aquí se cuenta solo la humedad, según lo acordado.
+      </div>
+    </div>
+  )
+}
+
 export default function SectionHRTemporal({ stationId, dateFrom, dateTo }) {
   const [excludeSat, setExcludeSat] = useState(false)
   const [data, setData] = useState(null)
@@ -347,6 +426,8 @@ export default function SectionHRTemporal({ stationId, dateFrom, dateTo }) {
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
             <Stat label="Mediciones HR" value={data.n.toLocaleString()} />
             <Stat label="Saturadas (HR = 100 %)" value={fmtPct(data.saturated_pct, 2)} color="#c084fc" />
+            <Stat label="TOW datos (HR ≥ 80 %)" value={fmtPct(data.tow_pct, 1)} color="#38bdf8" />
+            <Stat label="TOW modelo (FDP ≥ 80 %)" value={fmtPct(data.tow_model_pct, 1)} color="#38bdf8" />
             <Stat label="R² ajuste global" value={data.global_fit?.r2?.toFixed(4) ?? '—'} color="#22c55e" />
             <Stat label="Ajuste global" value={data.global_fit_source ?? 'no disponible'} color="#8b94a6" />
           </div>
@@ -375,6 +456,14 @@ export default function SectionHRTemporal({ stationId, dateFrom, dateTo }) {
           </Card>
           <Card title="Densidad de HR por mes" subtitle="Una curva por mes, suavizada · época seca dic-abr, lluviosa may-nov">
             <OverlayCurves groups={data.months} keyName="month" colorOf={monthColor} labelOf={m => MONTHS[m - 1]} />
+          </Card>
+
+          {/* 2b. Tiempo de humectación */}
+          <Card
+            title="Tiempo de humectación (TOW, HR ≥ 80 %)"
+            subtitle={`Porcentaje de horas con HR ≥ ${data.tow_threshold ?? 80} %. Datos: ${fmtPct(data.tow_pct)} · modelo (masa de la FDP ajustada a la derecha de 80 %): ${fmtPct(data.tow_model_pct)} · diferencia: ${data.tow_pct != null && data.tow_model_pct != null ? (data.tow_pct - data.tow_model_pct).toFixed(2) : '—'} puntos`}
+          >
+            <TowSummary data={data} />
           </Card>
 
           {/* 3. Análisis de tiempo */}
@@ -429,6 +518,13 @@ export default function SectionHRTemporal({ stationId, dateFrom, dateTo }) {
                       return `${MONTHS[mi]} ${String(h).padStart(2, '0')}:00 → ${k ? `Beta ${k}` : 'sin datos'}`
                     }}
                   />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, fontSize: 10, color: '#8b94a6' }}>
+                    {ta.components.map((c, i) => (
+                      <span key={c.index} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 2, background: BETA_COLORS[i] }} />Beta {c.index}
+                      </span>
+                    ))}
+                  </div>
                   <div style={{ fontSize: 11, color: '#8b94a6', marginTop: 8 }}>La curva con más mediciones asignadas en cada celda.</div>
                 </div>
               </div>

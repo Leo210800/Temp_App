@@ -121,10 +121,87 @@ def get_stats(
             "source":             "precalculado",
         }
 
-    raise HTTPException(
-        status_code=404,
-        detail="Sin datos precalculados. Sube un archivo CSV primero."
+    # Sin datos precalculados (por ejemplo, la base está en modo de solo
+    # lectura y no se pudieron guardar): se calcula al momento, sin escribir.
+    live = _live_distribution(db, station_id, variable, vc)
+    if live is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Sin datos precalculados. Sube un archivo CSV primero."
+        )
+    return live
+
+
+# Caché en memoria de los ajustes calculados al momento: el ajuste Beta de 10
+# años horarios tarda ~15 s, así que se reutiliza mientras no cambien los datos.
+_LIVE_CACHE: dict = {}
+
+
+def _live_distribution(db: Session, station_id: str, variable: Variable, vc: str) -> Optional[dict]:
+    import pandas as pd
+    from app.services.analytics_service import compute_distribution
+
+    rows = (
+        db.query(Measurement.measured_at, Measurement.value)
+        .filter(Measurement.station_id == station_id,
+                Measurement.variable_id == variable.id,
+                Measurement.value.isnot(None))
+        .order_by(Measurement.measured_at)
+        .all()
     )
+    if not rows:
+        return None
+    key = (str(station_id), vc, len(rows), str(rows[0][0]), str(rows[-1][0]))
+    if key in _LIVE_CACHE:
+        return _LIVE_CACHE[key]
+
+    df = pd.DataFrame(rows, columns=["measured_at", "value"])
+    df["measured_at"] = pd.to_datetime(df["measured_at"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna(subset=["value"])
+    res = compute_distribution(df, vc)
+    if not res.get("ok"):
+        return None
+
+    is_hr, is_wind = vc == "HR", vc == "VIENTO"
+    components, fdp_fitted = res["components"], res["fdp_fitted"]
+    r2, mse = res["r2"], res["mse"]
+    quality = _quality_flags(mse, r2, fdp_fitted, error_target=(2e-3 if is_wind else 1e-3))
+    w_sum = round(sum(c.get("w", 0) for c in components), 4)
+    quality["weights_sum"] = w_sum
+    quality["weights_sum_ok"] = abs(w_sum - 1.0) < 0.01
+    dist_type = res["dist_type"]
+    out = {
+        "n":                  int(res["n"]),
+        "mean":               round(res["mean"], 4),
+        "std":                round(res["std"], 4),
+        "min":                round(res["min"], 4),
+        "max":                round(res["max"], 4),
+        "q25":                round(res["q25"], 4),
+        "q50":                round(res["q50"], 4),
+        "q75":                round(res["q75"], 4),
+        "mode":               round(res["mode"], 4),
+        "completitud_pct":    res["completitud"],
+        "completitud_color":  _completitud_color(res["completitud"] or 0),
+        "anomalies_count":    len(res["anomaly_values"]),
+        "anomaly_values":     res["anomaly_values"],
+        "anomaly_threshold":  round(res["anomaly_threshold"], 4),
+        "date_start":         str(res["date_start"]),
+        "date_end":           str(res["date_end"]),
+        "distribution":       dist_type,
+        "n_components":       len(components),
+        "fdp_resolution":     1.0 if is_hr else 0.1,
+        "fdp":                fdp_fitted,
+        "gaussians":          components if dist_type == "gaussian" else [],
+        "betas":              components if dist_type == "beta" else [],
+        "weibulls":           components if dist_type == "weibull" else [],
+        "r2":                 round(r2, 4) if r2 is not None else None,
+        "mse":                round(mse, 8) if mse is not None else None,
+        "quality":            quality,
+        "source":             "calculado al momento (sin guardar)",
+    }
+    _LIVE_CACHE[key] = out
+    return out
 
 
 @router.post("/stats/recalculate")

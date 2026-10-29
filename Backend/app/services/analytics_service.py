@@ -226,27 +226,27 @@ def _calc_heatmap_stats(
 # DISTRIBUTION ANALYSIS
 # ═══════════════════════════════════════════════════════════════
 
-def _calc_distribution(
-    db: Session, df: pd.DataFrame,
-    station_id: str, variable_id: str,
-    variable_code: str,
-) -> list[str]:
-    logger.debug(f">>> _calc_distribution iniciado: variable_code={variable_code}")
+def compute_distribution(df: pd.DataFrame, variable_code: str) -> dict:
+    """
+    Calcula la distribución y el ajuste de una variable SIN tocar la base de
+    datos. La usan `_calc_distribution` (que luego guarda el resultado) y la
+    ruta /measurements/stats cuando no hay datos precalculados (por ejemplo,
+    si la base está en modo de solo lectura).
 
+    Devuelve {"ok": False, "msg": ...} o {"ok": True, ...campos...}.
+    """
     vc = variable_code.strip().upper()
-
-    # La dirección del viento es circular: no se ajusta a una distribución.
     if vc == "VIENTO_DIR":
-        return ["ℹ️ distribution_analysis: VIENTO_DIR es direccional, sin ajuste"]
+        return {"ok": False, "msg": "VIENTO_DIR es direccional, sin ajuste"}
 
     values  = df["value"].values
     is_hr   = vc == "HR"
     is_wind = vc == "VIENTO"
     paso    = 1.0 if is_hr else 0.1
 
-    logger.debug(f">>> valores: {len(values)}, is_hr={is_hr}, is_wind={is_wind}")
-
     n    = len(values)
+    if n == 0:
+        return {"ok": False, "msg": "sin mediciones"}
     mean = float(np.mean(values))
     std  = float(np.std(values))
     mn   = float(np.min(values))
@@ -278,35 +278,63 @@ def _calc_distribution(
     # aparece con datos cuantizados a un decimal y hunde el R²).
     fit_values = values[values > 0] if is_wind else values
     fdp = _build_fdp(fit_values, paso, align_grid=is_wind)
-    logger.debug(f">>> fdp bins: {len(fdp)}")
 
     if len(fdp) <= 4:
-        return ["⚠️ distribution_analysis: muy pocos bins para ajustar"]
+        return {"ok": False, "msg": "muy pocos bins para ajustar"}
 
-    dist_label = "weibull" if is_wind else ("beta" if is_hr else "gaussian")
-    logger.debug(f">>> iniciando ajuste {dist_label}...")
+    if is_wind:
+        # Deconvolución de curvas Weibull ponderadas (Ugalde et al. 2025):
+        # 3 vientos por defecto (comercial, valle-montaña, mixto débil).
+        components, r2, mse, fdp_fitted = _fit_weibull_components(fdp, n_components=3)
+        dist_type = "weibull"
+    elif is_hr:
+        # free_support libera el "entorno" [A,B] de cada beta (paso 1 del
+        # feedback); censor_sat añade la censura XBX del spike de saturación
+        # en HR=100. Sobre la HR real: err_acum −30 %, R² 0.995, área 1.000.
+        # Ver distribution_fitting._fit_beta_components.
+        components, r2, mse, fdp_fitted = _fit_beta_components(
+            fdp, n_components=5, free_support=True, censor_sat=True,
+        )
+        dist_type = "beta"
+    else:
+        components, r2, mse, fdp_fitted = _fit_gaussian_components(fdp, n_components=2)  # ← 2 como antes
+        dist_type = "gaussian"
+
+    return {
+        "ok": True,
+        "dist_type": dist_type,
+        "components": components,
+        "fdp_fitted": fdp_fitted,
+        "r2": r2, "mse": mse,
+        "n": n, "mean": mean, "std": std, "min": mn, "max": mx,
+        "q25": q25, "q50": q50, "q75": q75, "mode": mode,
+        "anomaly_threshold": anomaly_threshold,
+        "anomaly_values": anomaly_values[:50],
+        "completitud": completitud,
+        "date_start": date_start, "date_end": date_end,
+    }
+
+
+def _calc_distribution(
+    db: Session, df: pd.DataFrame,
+    station_id: str, variable_id: str,
+    variable_code: str,
+) -> list[str]:
+    logger.debug(f">>> _calc_distribution iniciado: variable_code={variable_code}")
+
     try:
-        if is_wind:
-            # Deconvolución de curvas Weibull ponderadas (Ugalde et al. 2025):
-            # 3 vientos por defecto (comercial, valle-montaña, mixto débil).
-            components, r2, mse, fdp_fitted = _fit_weibull_components(fdp, n_components=3)
-            dist_type = "weibull"
-        elif is_hr:
-            # free_support libera el "entorno" [A,B] de cada beta (paso 1 del
-            # feedback); censor_sat añade la censura XBX del spike de saturación
-            # en HR=100. Sobre la HR real: err_acum −30 %, R² 0.995, área 1.000.
-            # Ver distribution_fitting._fit_beta_components.
-            components, r2, mse, fdp_fitted = _fit_beta_components(
-                fdp, n_components=5, free_support=True, censor_sat=True,
-            )
-            dist_type = "beta"
-        else:
-            components, r2, mse, fdp_fitted = _fit_gaussian_components(fdp, n_components=2)  # ← 2 como antes
-            dist_type = "gaussian"
-        logger.debug(f">>> ajuste completado: {dist_type}, r2={r2}")
+        res = compute_distribution(df, variable_code)
     except Exception as e:
         logger.error(f">>> ERROR en ajuste: {e}")
         return [f"❌ distribution_analysis: error en ajuste: {e}"]
+    if not res["ok"]:
+        return [f"ℹ️ distribution_analysis: {res['msg']}"]
+
+    dist_type  = res["dist_type"]
+    components = res["components"]
+    fdp_fitted = res["fdp_fitted"]
+    r2, mse    = res["r2"], res["mse"]
+    logger.debug(f">>> ajuste completado: {dist_type}, r2={r2}")
 
     logger.debug(f">>> guardando en BD...")
     try:
@@ -340,20 +368,20 @@ def _calc_distribution(
             "n_components":      len(components),
             "components_json":   json.dumps(components),
             "fdp_json":          json.dumps(fdp_fitted),
-            "n_records":         n,
-            "mean_val":          round(mean, 4),
-            "std_val":           round(std,  4),
-            "min_val":           round(mn,   4),
-            "max_val":           round(mx,   4),
-            "q25_val":           round(q25,  4),
-            "q50_val":           round(q50,  4),
-            "q75_val":           round(q75,  4),
-            "mode_val":          round(mode, 4),
-            "anomaly_threshold": round(anomaly_threshold, 4),
-            "anomalies_json":    json.dumps(anomaly_values[:50]),
-            "completitud_pct":   completitud,
-            "date_start":        date_start,
-            "date_end":          date_end,
+            "n_records":         res["n"],
+            "mean_val":          round(res["mean"], 4),
+            "std_val":           round(res["std"],  4),
+            "min_val":           round(res["min"],  4),
+            "max_val":           round(res["max"],  4),
+            "q25_val":           round(res["q25"],  4),
+            "q50_val":           round(res["q50"],  4),
+            "q75_val":           round(res["q75"],  4),
+            "mode_val":          round(res["mode"], 4),
+            "anomaly_threshold": round(res["anomaly_threshold"], 4),
+            "anomalies_json":    json.dumps(res["anomaly_values"]),
+            "completitud_pct":   res["completitud"],
+            "date_start":        res["date_start"],
+            "date_end":          res["date_end"],
             "r2":                round(r2,  4) if r2  is not None else None,
             "mse":               round(mse, 8) if mse is not None else None,
         })
@@ -394,4 +422,4 @@ def upsert_summary_stats(db: Session, station_id: str, variable_id: str):
             date_end   = EXCLUDED.date_end,
             updated_at = now()
     """), {"sid": station_id, "vid": variable_id})
-    db.commit()
+    db.commit()

@@ -46,6 +46,7 @@ DRY_MONTHS = {12, 1, 2, 3, 4}
 DAY_HOURS  = set(range(6, 18))          # 06:00-17:59
 
 SAT_THRESHOLD = 100.0                   # HR >= este valor = saturada
+TOW_THRESHOLD = 80.0                    # tiempo de humectación: horas con HR >= 80 %
 N_COMPONENTS  = 5
 SMOOTH_SIGMA  = 1.5                     # suavizado de las curvas (en % HR)
 
@@ -220,11 +221,40 @@ def _add_period_cols(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["period"] = df["hour"].map(_period_of_hour)
     df["saturated"] = df["value"] >= SAT_THRESHOLD
+    df["wet"] = df["value"] >= TOW_THRESHOLD
     return df
 
 
 def _sat_pct(frame: pd.DataFrame) -> float | None:
     return round(100.0 * float(frame["saturated"].mean()), 2) if len(frame) else None
+
+
+def _tow_pct(frame: pd.DataFrame) -> float | None:
+    """Tiempo de humectación de los datos: % de horas con HR >= 80 %."""
+    return round(100.0 * float(frame["wet"].mean()), 2) if len(frame) else None
+
+
+def _tow_model_pct(fdp: list[dict] | None) -> float | None:
+    """
+    Tiempo de humectación según el modelo: masa de la FDP ajustada a la
+    derecha de 80 % (bins con x >= 80), sobre la masa total del modelo.
+    """
+    if not fdp:
+        return None
+    total = sum(float(p.get("model") or 0.0) for p in fdp)
+    if total <= 0:
+        return None
+    wet = sum(float(p.get("model") or 0.0) for p in fdp if float(p["x"]) >= TOW_THRESHOLD)
+    return round(100.0 * wet / total, 2)
+
+
+def _tow_matrix(df: pd.DataFrame) -> list[list[float | None]]:
+    """% de horas con HR >= 80 % en cada celda mes × hora (12 × 24)."""
+    grid = df.groupby(["month", "hour"])["wet"].mean()
+    return [
+        [round(100.0 * float(grid[(m, h)]), 1) if (m, h) in grid.index else None for h in range(24)]
+        for m in range(1, 13)
+    ]
 
 
 def fit_global(df: pd.DataFrame, censor_sat: bool = True) -> dict:
@@ -265,6 +295,7 @@ def analyze_hr_temporal(
                 "key": key,
                 "n": int(len(vals)),
                 "saturated_pct": _sat_pct(g_all),
+                "tow_pct": _tow_pct(g_all),
                 "mode": _mode_of_curve(curve),
                 "curve": curve if full else [{"x": d["x"], "smooth": d["smooth"]} for d in curve],
             })
@@ -287,6 +318,10 @@ def analyze_hr_temporal(
         "date_end": str(df["measured_at"].max()),
         "saturated_pct": _sat_pct(df),
         "sat_threshold": SAT_THRESHOLD,
+        "tow_threshold": TOW_THRESHOLD,
+        "tow_pct": _tow_pct(df),
+        "tow_model_pct": _tow_model_pct(global_fit.get("fdp")) if global_fit else None,
+        "tow_matrix": _tow_matrix(df),
         "exclude_saturated": exclude_saturated,
         "dry_months": sorted(DRY_MONTHS),
         "day_hours": [min(DAY_HOURS), max(DAY_HOURS)],
@@ -319,9 +354,11 @@ def fit_period(
     vals = g["value"].to_numpy(dtype=float)
     # Sin datos saturados no hay masa en 100 %: la censura XBeta no aplica.
     fit = _fit(vals, censor_sat=censor_sat and not exclude_saturated)
-    out = {**period, "n": int(len(vals)), "exclude_saturated": exclude_saturated, "ok": fit["ok"]}
+    out = {**period, "n": int(len(vals)), "exclude_saturated": exclude_saturated, "ok": fit["ok"],
+           "tow_pct": _tow_pct(g)}
     if fit["ok"]:
         out.update({k: fit[k] for k in ("betas", "r2", "mse", "fdp")})
+        out["tow_model_pct"] = _tow_model_pct(fit["fdp"])
     else:
         out["msg"] = fit["msg"]
     return out
