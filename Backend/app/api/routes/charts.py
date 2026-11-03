@@ -132,6 +132,45 @@ def get_stats(
     return live
 
 
+@router.get("/stats/beta-init")
+def get_beta_init(
+    station_id:   str   = Query(...),
+    ventana:      int   = Query(5, ge=3, le=15),
+    tolerancia:   int   = Query(1, ge=0, le=5),
+    peso_minimo:  float = Query(1.0, ge=0.0, le=10.0, description="% mínimo para conservar una curva"),
+    solapamiento: float = Query(2.0, ge=0.0, le=10.0),
+    paso_tabla:   float = Query(0.5, ge=0.1, le=1.0),
+    sat_beta:     float = Query(0.5, gt=0.0, lt=1.0),
+    ajustar:      bool  = Query(True),
+    db: Session = Depends(get_db),
+):
+    """Valores iniciales de las curvas Beta de HR con el método de derivadas
+    (moda por cruces de + a −, A y B por los mínimos de la 3ª derivada, pesos
+    por el % acumulado y α, β por la posición relativa de la moda) y, si se
+    pide, el ajuste que parte de esos valores, para compararlo con el actual."""
+    from app.services.beta_init_derivadas import initial_values, fit_from_seeds
+
+    stats = get_stats(station_id=station_id, variable_code="HR", date_from=None,
+                      date_to=None, n_components=5, db=db)
+    fdp = stats["fdp"]
+    init = initial_values(fdp, window=ventana, merge_tol=tolerancia, min_weight=peso_minimo / 100.0,
+                          overlap=solapamiento, ab_step=paso_tabla, sat_beta=sat_beta)
+    actual = {
+        "r2": stats.get("r2"), "emc": stats.get("mse"), "n_curvas": len(stats.get("betas") or []),
+        "err_max": max((abs(float(d.get("freq", 0)) - float(d.get("model", 0))) for d in fdp), default=None),
+    }
+    out = {"init": init, "actual": actual, "fit": None}
+    if ajustar and init["curvas"]:
+        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta)
+        if key not in _INIT_CACHE:
+            _INIT_CACHE[key] = fit_from_seeds(fdp, init["curvas"])
+        out["fit"] = _INIT_CACHE[key]
+    return out
+
+
+_INIT_CACHE: dict = {}
+
+
 # Caché en memoria de los ajustes calculados al momento: el ajuste Beta de 10
 # años horarios tarda ~15 s, así que se reutiliza mientras no cambien los datos.
 _LIVE_CACHE: dict = {}

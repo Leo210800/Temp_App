@@ -60,6 +60,9 @@ export const measurementsApi = {
   stats: (p = {}) =>
     req(`/measurements/stats?${new URLSearchParams(clean(p))}`),
 
+  betaInit: (p = {}) =>                                                   // valores iniciales Beta por derivadas
+    req(`/measurements/stats/beta-init?${new URLSearchParams(clean(p))}`),
+
   statsSummaryTable: (p = {}) =>                                          // ← nuevo
     req(`/measurements/stats/summary-table?${new URLSearchParams(clean(p))}`),
 

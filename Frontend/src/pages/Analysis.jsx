@@ -10,6 +10,7 @@ import { stationsApi, measurementsApi } from '../services/api'
 import { Loader2, AlertTriangle, RefreshCw, Download, CloudSun } from 'lucide-react'
 import SectionHRTemporal from './analysis/SectionHRTemporal'
 import HRValidationPanel from './analysis/HRValidationPanel'
+import BetaInitPanel from './analysis/BetaInitPanel'
 
 const SPIN = { animation: 'spin 0.8s linear infinite' }
 
@@ -1005,6 +1006,7 @@ function SectionFDP({ stationId, dateFrom, dateTo }) {
             <StatBox label="Σw"      value={hStats.quality?.weights_sum?.toFixed(4) ?? '—'} color={hStats.quality?.weights_sum_ok ? '#22c55e' : '#ef4444'} />
           </div>
           <HRValidationPanel fdp={hStats.fdp} betas={hStats.betas ?? []} />
+          <BetaInitPanel stationId={stationId} />
         </SectionCard>
       )}
 
@@ -2934,4 +2936,4 @@ export default function Analysis() {
       )}
     </div>
   )
-}
+}
