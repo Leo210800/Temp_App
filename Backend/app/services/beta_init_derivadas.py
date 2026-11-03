@@ -13,8 +13,10 @@ Pasos:
   5. Pesos: diferencia del % acumulado entre A y B. Los entornos con peso
      menor que 1 % se eliminan y su peso pasa al entorno de la derecha.
   6. α y β: posición relativa de la moda en (A, B), buscada en la tabla
-     Moda–(α, β). Saturación: α = 3, β = 0.5 por defecto.
-  7. Solapamiento: A y B se abren unos puntos a cada lado.
+     Moda–(α, β). Saturación: α = 3 y β < 1 (0.8 por defecto).
+  7. Solapamiento: A y B se abren al menos 2 puntos a cada lado.
+  8. Varianza: estima el ancho de la curva; B − A debe ser mayor o igual
+     que ese ancho, y si no lo es el entorno se ensancha.
 
 Las etiquetas de cada cruce siguen la notación del documento: "72/73" es un
 cruce entre las clases 72 y 73, y como valor se toma el menor (72).
@@ -74,7 +76,8 @@ def initial_values(
     overlap: float = 2.0,
     ab_step: float = 0.5,
     sat_alpha: float = 3.0,
-    sat_beta: float = 0.5,
+    sat_beta: float = 0.8,
+    use_variance: bool = True,
     keep_frac: float = 0.002,
 ) -> dict:
     x = np.array([float(d["x"]) for d in fdp])
@@ -155,6 +158,15 @@ def initial_values(
     if carry and fused:
         fused[-1]["p"] += carry
 
+    # Varianza de los datos dentro de un entorno (en %², HR)
+    def var_datos(A: float, B: float) -> float | None:
+        m = (x >= A) & (x < B)
+        w = y[m]
+        if m.sum() < 2 or float(w.sum()) <= 0:
+            return None
+        mu = float(np.sum(w * x[m]) / w.sum())
+        return float(np.sum(w * (x[m] - mu) ** 2) / w.sum())
+
     # Saturación: A = último límite, B = 100
     out = []
     for i, c in enumerate(fused, start=1):
@@ -165,18 +177,35 @@ def initial_values(
         else:
             pos = (c["moda"] - A) / (B - A) if B > A else 0.5
             a, b = seed_alpha_beta(pos, ab_step)
+        A_sol = max(float(labels[0]), A - overlap)
+        B_sol = 101.0 if sat else min(101.0, B + overlap)
+
+        # La varianza estima el ancho: con (α, β), una Beta de ancho W tiene
+        # varianza var01·W². Si el ancho que pide la varianza de los datos es
+        # mayor que B − A, se ensancha el entorno manteniendo la posición
+        # relativa de la moda (B − A ≥ ancho por varianza).
+        var01 = a * b / ((a + b) ** 2 * (a + b + 1.0))
+        vd = var_datos(A, B)
+        ancho_var = float(np.sqrt(vd / var01)) if (vd and not sat) else None
+        ensanchado = False
+        if use_variance and ancho_var and ancho_var > (B_sol - A_sol):
+            A_sol = max(float(labels[0]), c["moda"] - pos * ancho_var)
+            B_sol = min(101.0, A_sol + ancho_var)
+            ensanchado = True
         out.append({
             "beta": i, "moda": int(c["moda"]), "A": A, "B": B,
             "p": round(100 * c["p"], 2), "pos_rel": round(pos, 3),
             "alpha": a, "beta_": b, "saturacion": sat,
-            "A_sol": max(float(labels[0]), A - overlap),
-            "B_sol": 101.0 if sat else min(101.0, B + overlap),
+            "var01": round(var01, 4),
+            "ancho_varianza": round(ancho_var, 1) if ancho_var else None,
+            "A_sol": round(A_sol, 1), "B_sol": round(B_sol, 1), "ensanchado": ensanchado,
         })
 
     return {
         "parametros": {"ventana": window, "tolerancia_modas": merge_tol, "peso_minimo": min_weight,
                        "solapamiento": overlap, "paso_tabla": ab_step,
-                       "saturacion_alpha": sat_alpha, "saturacion_beta": sat_beta},
+                       "saturacion_alpha": sat_alpha, "saturacion_beta": sat_beta,
+                       "usar_varianza": use_variance},
         "cruces": cruces,
         "modas": sorted(set(modas + ([100] if saturacion else []))),
         "limites": lims,

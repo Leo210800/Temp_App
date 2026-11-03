@@ -55,7 +55,7 @@ function downloadCsv(name, rows) {
 }
 
 export default function BetaInitPanel({ stationId }) {
-  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.5, tolerancia: 1 })
+  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -71,8 +71,8 @@ export default function BetaInitPanel({ stationId }) {
   const init = data?.init, fit = data?.fit
   const chart = (fit?.fdp || []).map(p => ({ x: p.x, real: p.real * SCALE, inicial: p.inicial * SCALE, modelo: p.modelo * SCALE }))
   const exportCsv = () => downloadCsv('valores_iniciales_beta_HR.csv', [
-    ['Beta', 'Moda', 'A', 'B', 'P (%)', 'Posicion relativa', 'Alfa', 'Beta', 'A con solapamiento', 'B con solapamiento'],
-    ...(init?.curvas || []).map(c => [c.beta, c.moda, c.A, c.B, c.p, c.pos_rel, c.alpha, c.beta_, c.A_sol, c.B_sol]),
+    ['Beta', 'Moda', 'A', 'B', 'P (%)', 'Posicion relativa', 'Alfa', 'Beta', 'Ancho por varianza', 'A inicial', 'B inicial'],
+    ...(init?.curvas || []).map(c => [c.beta, c.moda, c.A, c.B, c.p, c.pos_rel, c.alpha, c.beta_, c.ancho_varianza ?? '', c.A_sol, c.B_sol]),
   ])
 
   return (
@@ -98,6 +98,10 @@ export default function BetaInitPanel({ stationId }) {
         <Field label="Paso tabla α, β" value={opts.paso_tabla} onChange={set('paso_tabla')} step={0.1} min={0.1} max={1} />
         <Field label="β saturación" value={opts.sat_beta} onChange={set('sat_beta')} step={0.1} min={0.1} max={0.9} />
         <Field label="Modas iguales a ±" value={opts.tolerancia} onChange={set('tolerancia')} step={1} min={0} max={5} />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
+          <input type="checkbox" checked={opts.usar_varianza} onChange={e => set('usar_varianza')(e.target.checked)} />
+          B − A ≥ ancho por varianza
+        </label>
       </div>
 
       {loading && <div style={{ fontSize: 12, color: '#8b94a6', marginTop: 12 }}>Calculando y ajustando desde los valores iniciales… puede tardar hasta un minuto.</div>}
@@ -121,12 +125,14 @@ export default function BetaInitPanel({ stationId }) {
           <Title>Valores iniciales de cada curva</Title>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#e7eaf0' }}>
-              <thead><tr>{['Beta', 'Moda', 'A', 'B', 'P (%)', 'Posición relativa', 'α', 'β', 'A con solap.', 'B con solap.'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <thead><tr>{['Beta', 'Moda', 'A', 'B', 'P (%)', 'Posición relativa', 'α', 'β', 'Ancho por varianza', 'A inicial', 'B inicial'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>{init.curvas.map(c => (
                 <tr key={c.beta}>
                   <td style={td}>{c.beta}{c.saturacion ? ' (sat.)' : ''}</td><td style={td}>{c.moda}</td><td style={td}>{c.A}</td><td style={td}>{c.B}</td>
                   <td style={td}>{c.p.toFixed(1)}</td><td style={td}>{c.pos_rel.toFixed(3)}</td><td style={td}>{c.alpha}</td><td style={td}>{c.beta_}</td>
-                  <td style={td}>{c.A_sol}</td><td style={td}>{c.B_sol}</td>
+                  <td style={td}>{c.ancho_varianza ?? '—'}</td>
+                  <td style={{ ...td, color: c.ensanchado ? '#facc15' : td.color }}>{c.A_sol}</td>
+                  <td style={{ ...td, color: c.ensanchado ? '#facc15' : td.color }}>{c.B_sol}</td>
                 </tr>))}</tbody>
             </table>
           </div>
@@ -135,6 +141,9 @@ export default function BetaInitPanel({ stationId }) {
 
       {data && (
         <>
+          <div style={{ fontSize: 11, color: '#5b6577', marginTop: 6 }}>
+            A y B iniciales = mínimos de la 3ª derivada abiertos por el solapamiento. En amarillo, los entornos que se ensancharon porque la varianza de los datos pide un ancho mayor.
+          </div>
           <Title>Comparación de los ajustes</Title>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Metric title="Ajuste actual de la app" m={data.actual} n={data.actual?.n_curvas} />
