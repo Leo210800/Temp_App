@@ -55,7 +55,7 @@ function downloadCsv(name, rows) {
 }
 
 export default function BetaInitPanel({ stationId }) {
-  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true })
+  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true, derivada: 'pendiente', una_moda: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -81,7 +81,7 @@ export default function BetaInitPanel({ stationId }) {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#e7eaf0' }}>Valores iniciales por derivadas</div>
           <div style={{ fontSize: 11, color: '#8b94a6', marginTop: 2 }}>
-            Modas: cruces de + a − de la 1ª, 2ª y 3ª derivada · A y B: cruces de − a + de la 3ª derivada · pesos por % acumulado · α y β por la posición de la moda.
+            Derivadas como pendiente cada 5 puntos · modas: cruces de + a − de la 1ª, 2ª y 3ª derivada (una por entorno) · A y B: cruces de − a + de la 3ª derivada · pesos por % acumulado · α y β por la posición de la moda.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }} data-html2canvas-ignore>
@@ -102,6 +102,14 @@ export default function BetaInitPanel({ stationId }) {
           <input type="checkbox" checked={opts.usar_varianza} onChange={e => set('usar_varianza')(e.target.checked)} />
           B − A ≥ ancho por varianza
         </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
+          <input type="checkbox" checked={opts.derivada === 'pendiente'} onChange={e => set('derivada')(e.target.checked ? 'pendiente' : 'gradiente')} />
+          Derivada como pendiente cada 5 puntos
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
+          <input type="checkbox" checked={opts.una_moda} onChange={e => set('una_moda')(e.target.checked)} />
+          Una moda por entorno A–B
+        </label>
       </div>
 
       {loading && <div style={{ fontSize: 12, color: '#8b94a6', marginTop: 12 }}>Calculando y ajustando desde los valores iniciales… puede tardar hasta un minuto.</div>}
@@ -116,6 +124,9 @@ export default function BetaInitPanel({ stationId }) {
                 <tr key={k}><td style={{ ...td, textAlign: 'left', color: '#8b94a6' }}>{lab}</td>
                   <td style={{ ...td, textAlign: 'left' }}>{(init.cruces[k] || []).map(c => c.par).join(', ') || '—'}</td></tr>
               ))}
+              {init.modas_candidatas && init.modas_candidatas.length !== init.modas.length && (
+                <tr><td style={{ ...td, textAlign: 'left', color: '#8b94a6' }}>Modas candidatas</td><td style={{ ...td, textAlign: 'left' }}>{init.modas_candidatas.join(', ')}</td></tr>
+              )}
               <tr><td style={{ ...td, textAlign: 'left', color: '#8b94a6' }}>Modas resultantes</td><td style={{ ...td, textAlign: 'left' }}>{init.modas.join(', ')}</td></tr>
               <tr><td style={{ ...td, textAlign: 'left', color: '#8b94a6' }}>% acumulado en cada límite</td>
                 <td style={{ ...td, textAlign: 'left' }}>{init.acumulado.map(a => `${a.limite}: ${a.pct.toFixed(3)}`).join(' · ')}</td></tr>

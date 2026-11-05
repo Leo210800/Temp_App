@@ -4,9 +4,13 @@ Valores iniciales de las curvas Beta a partir de las derivadas de la FDP
 
 Pasos:
   1. Suavizar la FDP con un promedio móvil centrado de 5 puntos.
-  2. Calcular la 1ª, 2ª y 3ª derivada.
+  2. Calcular la 1ª, 2ª y 3ª derivada como la pendiente cada 5 puntos
+     (y[i+2] − y[i−2]) / (x[i+2] − x[i−2]), igual que en la hoja de cálculo
+     de J. Rodríguez Yáñez. Esa pendiente ya suaviza cada derivada.
   3. Modas candidatas: cruces de + a − de las tres derivadas. Los valores
      que se repiten (a 1 punto o menos) se cuentan una vez y se toma el menor.
+     Con "una moda por entorno", entre dos límites A–B queda una sola moda:
+     la de la 1ª derivada; si no hay, la de la 2ª; si no, la de la 3ª.
      Si los dos últimos valores de HR crecen, se agrega la curva de saturación
      (moda 100).
   4. Límites A y B: cruces de − a + de la 3ª derivada (mínimos entre modas).
@@ -33,6 +37,19 @@ def moving_average(y: np.ndarray, window: int = 5) -> np.ndarray:
     for i in range(len(y)):
         lo, hi = max(0, i - h), min(len(y), i + h + 1)
         out[i] = float(np.mean(y[lo:hi]))
+    return out
+
+
+def slope(y: np.ndarray, x: np.ndarray, window: int = 5) -> np.ndarray:
+    """Pendiente cada `window` puntos: (y[i+h] − y[i−h]) / (x[i+h] − x[i−h]),
+    con h = window // 2; en los bordes la ventana se acorta."""
+    h = max(1, window // 2)
+    n = len(y)
+    out = np.zeros(n, dtype=float)
+    for i in range(n):
+        lo, hi = max(0, i - h), min(n - 1, i + h)
+        if hi > lo:
+            out[i] = (y[hi] - y[lo]) / (x[hi] - x[lo])
     return out
 
 
@@ -79,6 +96,8 @@ def initial_values(
     sat_beta: float = 0.8,
     use_variance: bool = True,
     keep_frac: float = 0.002,
+    derivada: str = "pendiente",
+    una_moda_por_entorno: bool = True,
 ) -> dict:
     x = np.array([float(d["x"]) for d in fdp])
     y = np.array([float(d["freq"]) for d in fdp])
@@ -86,9 +105,14 @@ def initial_values(
     total = float(y.sum()) or 1.0
 
     ys = moving_average(y, window)
-    d1 = np.gradient(ys, x)
-    d2 = np.gradient(d1, x)
-    d3 = np.gradient(d2, x)
+    if derivada == "pendiente":
+        d1 = slope(ys, x, window)
+        d2 = slope(d1, x, window)
+        d3 = slope(d2, x, window)
+    else:                                            # diferencia de 1 punto
+        d1 = np.gradient(ys, x)
+        d2 = np.gradient(d1, x)
+        d3 = np.gradient(d2, x)
     keep = ys >= keep_frac * float(ys.max())          # ignora la zona sin datos
 
     cruces = {
@@ -123,10 +147,23 @@ def initial_values(
         return float(y[x < b].sum()) / total
 
     # Entornos: [0, l1), [l1, l2), …, [ln, fin]
-    edges = [int(labels[0])] + lims + [top + 1]
+    inicio = int(labels[np.argmax(keep)]) if keep.any() else int(labels[0])   # donde empiezan los datos
+    edges = [inicio] + [l for l in lims if l > inicio] + [top + 1]
+    prioridad = [[c["valor"] for c in cruces[k]] for k in ("d1_max", "d2_max", "d3_max")]
+
+    def mejor_moda(ms: list[int]) -> list[int]:
+        """Una sola moda: la de la derivada de menor orden; a igualdad, la menor."""
+        for lista in prioridad:
+            hits = [m for m in ms if any(abs(m - v) <= merge_tol for v in lista)]
+            if hits:
+                return [min(hits)]
+        return ms[:1]
+
     entornos = []
     for lo, hi in zip(edges[:-1], edges[1:]):
         ms = [m for m in modas if lo <= m < hi]
+        if una_moda_por_entorno and len(ms) > 1:
+            ms = mejor_moda(ms)
         if saturacion and hi == top + 1:
             ms = ms + [100] if not ms or ms[-1] != 100 else ms
         entornos.append({"lo": lo, "hi": hi, "modas": ms, "p": cum(hi) - cum(lo)})
@@ -205,9 +242,11 @@ def initial_values(
         "parametros": {"ventana": window, "tolerancia_modas": merge_tol, "peso_minimo": min_weight,
                        "solapamiento": overlap, "paso_tabla": ab_step,
                        "saturacion_alpha": sat_alpha, "saturacion_beta": sat_beta,
-                       "usar_varianza": use_variance},
+                       "usar_varianza": use_variance, "derivada": derivada,
+                       "una_moda_por_entorno": una_moda_por_entorno},
         "cruces": cruces,
-        "modas": sorted(set(modas + ([100] if saturacion else []))),
+        "modas": sorted({c["moda"] for c in out}),
+        "modas_candidatas": sorted(set(modas + ([100] if saturacion else []))),
         "limites": lims,
         "acumulado": [{"limite": l, "pct": round(100 * cum(l), 3)} for l in lims],
         "curvas": out,

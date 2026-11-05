@@ -142,6 +142,9 @@ def get_beta_init(
     paso_tabla:   float = Query(0.5, ge=0.1, le=1.0),
     sat_beta:     float = Query(0.8, gt=0.0, le=1.0),
     usar_varianza: bool = Query(True),
+    derivada:     str   = Query("pendiente", pattern="^(pendiente|gradiente)$",
+                                description="pendiente cada `ventana` puntos o diferencia de 1 punto"),
+    una_moda:     bool  = Query(True, description="una sola moda entre cada par de límites A–B"),
     ajustar:      bool  = Query(True),
     db: Session = Depends(get_db),
 ):
@@ -156,14 +159,15 @@ def get_beta_init(
     fdp = stats["fdp"]
     init = initial_values(fdp, window=ventana, merge_tol=tolerancia, min_weight=peso_minimo / 100.0,
                           overlap=solapamiento, ab_step=paso_tabla, sat_beta=sat_beta,
-                          use_variance=usar_varianza)
+                          use_variance=usar_varianza, derivada=derivada,
+                          una_moda_por_entorno=una_moda)
     actual = {
         "r2": stats.get("r2"), "emc": stats.get("mse"), "n_curvas": len(stats.get("betas") or []),
         "err_max": max((abs(float(d.get("freq", 0)) - float(d.get("model", 0))) for d in fdp), default=None),
     }
     out = {"init": init, "actual": actual, "fit": None}
     if ajustar and init["curvas"]:
-        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta, usar_varianza)
+        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta, usar_varianza, derivada, una_moda)
         if key not in _INIT_CACHE:
             _INIT_CACHE[key] = fit_from_seeds(fdp, init["curvas"])
         out["fit"] = _INIT_CACHE[key]
