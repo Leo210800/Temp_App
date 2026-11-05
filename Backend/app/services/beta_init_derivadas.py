@@ -255,7 +255,13 @@ def initial_values(
 
 def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0, maxiter: int = 3000) -> dict:
     """Ajuste SLSQP de la mezcla Beta generalizada partiendo de los valores
-    iniciales. A y B pueden moverse ±free_ab puntos; los pesos suman 1."""
+    iniciales. A y B pueden moverse ±free_ab puntos; los pesos suman 1.
+
+    Cada curva se integra por clase con la CDF (masa exacta en cada clase, sin
+    perder área). La curva de saturación usa censura al borde, igual que el
+    ajuste principal: toda su masa por encima del borde izquierdo de la última
+    clase (incluida la que cae más allá de 100 %) se apila en esa clase. Se
+    prueban varias semillas para la saturación y se queda el mejor ajuste."""
     from scipy.stats import beta as beta_dist
     from scipy.optimize import minimize
 
@@ -263,52 +269,74 @@ def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0
     y = np.array([float(d["freq"]) for d in fdp])
     y = y / (y.sum() or 1.0)
     paso = float(x[1] - x[0]) if len(x) > 1 else 1.0
-
-    p0, bounds = [], []
-    for c in curvas:
-        A0, B0 = c["A_sol"], c["B_sol"]
-        if c["saturacion"]:
-            p0 += [c["alpha"], c["beta_"], A0, B0]
-            bounds += [(1.05, 60.0), (0.05, 0.99), (A0 - free_ab, min(99.0, A0 + free_ab)), (100.5, 106.0)]
-        else:
-            p0 += [c["alpha"], c["beta_"], A0, B0]
-            bounds += [(1.05, 60.0), (1.05, 60.0), (A0 - free_ab, A0 + free_ab), (B0 - free_ab, B0 + free_ab)]
-        p0.append(max(c["p"] / 100.0, 0.005)); bounds.append((0.0, 1.0))
-    p0 = np.array(p0, float)
+    bordes = np.append(x - paso / 2.0, x[-1] + paso / 2.0)     # n + 1 bordes
     n = len(curvas)
+    sat_flags = [bool(c["saturacion"]) for c in curvas]
+
+    def masa(a, b, A, B, sat):
+        if B - A < 1.0:
+            return np.zeros_like(x)
+        cdf = beta_dist.cdf(np.clip((bordes - A) / (B - A), 0.0, 1.0), a, b)
+        m = np.diff(cdf)
+        if sat:
+            m[-1] = 1.0 - cdf[-2]          # censura: lo que pasa de 100 % va a la clase de 100
+        return m
 
     def comps(p):
-        out = []
-        for i in range(n):
-            a, b, A, B, w = p[5 * i:5 * i + 5]
-            if B - A < 1.0:
-                out.append(np.zeros_like(x)); continue
-            pdf = beta_dist.pdf((x - A) / (B - A), a, b) / (B - A)
-            out.append(w * np.nan_to_num(pdf, posinf=0.0) * paso)
-        return out
+        return [p[5 * i + 4] * masa(*p[5 * i:5 * i + 4], sat_flags[i]) for i in range(n)]
 
     def cost(p):
         return float(np.mean((y - np.sum(comps(p), axis=0)) ** 2))
 
+    def build(sat_seed):
+        p0, bounds = [], []
+        for c in curvas:
+            A0, B0 = c["A_sol"], c["B_sol"]
+            if c["saturacion"]:
+                a0, b0, Bs = sat_seed if sat_seed else (c["alpha"], c["beta_"], 101.0)
+                A0 = min(A0, 98.0)
+                p0 += [a0, b0, A0, Bs]
+                bounds += [(1.05, 500.0), (0.05, 5.0), (max(60.0, A0 - 2 * free_ab), 98.0), (100.5, 115.0)]
+            else:
+                p0 += [c["alpha"], c["beta_"], A0, B0]
+                bounds += [(1.05, 60.0), (1.05, 60.0), (A0 - free_ab, A0 + free_ab), (B0 - free_ab, B0 + free_ab)]
+            p0.append(max(c["p"] / 100.0, 0.005)); bounds.append((0.0, 1.0))
+        return np.array(p0, float), bounds
+
     cons = [{"type": "eq", "fun": lambda p: float(np.sum(p[4::5])) - 1.0}]
-    res = minimize(cost, p0, method="SLSQP", bounds=bounds, constraints=cons,
-                   options={"maxiter": maxiter, "ftol": 1e-13})
+    p_ini, _ = build(None)
+    best = None
+    # Semillas de la saturación (α, β, B): la del método y las del ajuste principal
+    for seed in (None, (3.0, 0.8, 104.0), (2.0, 2.0, 106.0), (8.0, 0.5, 102.0), (1.5, 1.2, 110.0)):
+        p0, bounds = build(seed)
+        try:
+            res = minimize(cost, p0, method="SLSQP", bounds=bounds, constraints=cons,
+                           options={"maxiter": maxiter, "ftol": 1e-13})
+        except Exception:
+            continue
+        if best is None or res.fun < best.fun:
+            best = res
+    res = best
     p = res.x
     yhat = np.sum(comps(p), axis=0)
     ss_res = float(np.sum((y - yhat) ** 2)); ss_tot = float(np.sum((y - y.mean()) ** 2)) or 1.0
-    ini = np.sum(comps(p0), axis=0)
+    ini = np.sum(comps(p_ini), axis=0)
     ss_ini = float(np.sum((y - ini) ** 2))
     finales = []
     for i, c in enumerate(curvas):
         a, b, A, B, w = (float(v) for v in p[5 * i:5 * i + 5])
-        moda = A + (B - A) * (a - 1) / (a + b - 2) if a > 1 and b > 1 else (B if b < 1 else A)
+        if sat_flags[i]:
+            moda = 100.0
+        else:
+            moda = A + (B - A) * (a - 1) / (a + b - 2) if a > 1 and b > 1 else (B if b < 1 else A)
         finales.append({"beta": c["beta"], "alpha": round(a, 3), "beta_": round(b, 3), "A": round(A, 1),
                         "B": round(B, 1), "p": round(100 * w, 2), "moda": round(moda, 1)})
     return {
         "inicial": {"r2": round(1 - ss_ini / ss_tot, 4), "emc": float(ss_ini / len(y)),
                     "err_max": float(np.max(np.abs(y - ini)))},
         "final": {"r2": round(1 - ss_res / ss_tot, 4), "emc": float(ss_res / len(y)),
-                  "err_max": float(np.max(np.abs(y - yhat))), "convergio": bool(res.success)},
+                  "err_max": float(np.max(np.abs(y - yhat))), "convergio": bool(res.success),
+                  "area": round(float(yhat.sum()), 4)},
         "curvas": finales,
         "fdp": [{"x": float(xi), "real": float(yi), "inicial": float(ii), "modelo": float(mi)}
                 for xi, yi, ii, mi in zip(x, y, ini, yhat)],
