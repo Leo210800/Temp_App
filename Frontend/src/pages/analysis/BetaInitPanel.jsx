@@ -79,7 +79,7 @@ export default function BetaInitPanel({ stationId }) {
     <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #272d37' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#e7eaf0' }}>Valores iniciales por derivadas (método de Javier)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#e7eaf0' }}>Valores iniciales por derivadas</div>
           <div style={{ fontSize: 11, color: '#8b94a6', marginTop: 2 }}>
             Modas: cruces de + a − de la 1ª, 2ª y 3ª derivada · A y B: cruces de − a + de la 3ª derivada · pesos por % acumulado · α y β por la posición de la moda.
           </div>
