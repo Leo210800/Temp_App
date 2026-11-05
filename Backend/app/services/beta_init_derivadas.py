@@ -5,12 +5,13 @@ Valores iniciales de las curvas Beta a partir de las derivadas de la FDP
 Pasos:
   1. Suavizar la FDP con un promedio móvil centrado de 5 puntos.
   2. Por defecto ("excel"), sin suavizar: cada derivada es la PENDIENTE de
-     Excel sobre 5 filas consecutivas hacia adelante, como en la hoja de
-     J. Rodríguez Yáñez. Opción "pendiente": calcular la 1ª, 2ª y 3ª derivada como la pendiente cada 5 puntos
+     Excel sobre las 5 filas que terminan en la fila i (i−4 … i), como en la
+     hoja de J. Rodríguez Yáñez; así se reproducen sus cruces de Belén. Opción "pendiente": calcular la 1ª, 2ª y 3ª derivada como la pendiente cada 5 puntos
      (y[i+2] − y[i−2]) / (x[i+2] − x[i−2]), igual que en la hoja de cálculo
      de J. Rodríguez Yáñez. Esa pendiente ya suaviza cada derivada.
   3. Modas candidatas: cruces de + a − de las tres derivadas. Los valores
-     que se repiten (a 1 punto o menos) se cuentan una vez y se toma el menor.
+     vecinos (a 1 punto o menos) se cuentan una vez: manda el de la derivada de
+     menor orden; si no, el que se repite; si no, el menor.
      Con "una moda por entorno", entre dos límites A–B queda una sola moda:
      la de la 1ª derivada; si no hay, la de la 2ª; si no, la de la 3ª.
      Si los dos últimos valores de HR crecen, se agrega la curva de saturación
@@ -56,18 +57,15 @@ def slope(y: np.ndarray, x: np.ndarray, window: int = 5) -> np.ndarray:
 
 
 def slope_excel(y: np.ndarray, x: np.ndarray, window: int = 5) -> np.ndarray:
-    """Como PENDIENTE() de Excel sobre `window` filas consecutivas hacia
-    adelante: la pendiente por mínimos cuadrados de los puntos i … i+4 se
-    asigna al punto i (así lo hace la hoja de J. Rodríguez Yáñez). Al final
-    de la serie la ventana se acorta."""
+    """Como PENDIENTE() de Excel sobre las `window` filas que terminan en la
+    fila i (i−4 … i), igual que la hoja de J. Rodríguez Yáñez. Con esto la app
+    reproduce sus cruces de Belén. Al inicio de la serie la ventana se acorta."""
     n = len(y)
     out = np.zeros(n, dtype=float)
     for i in range(n):
-        hi = min(n, i + window)
-        if hi - i >= 2:
-            out[i] = float(np.polyfit(x[i:hi], y[i:hi], 1)[0])
-        elif i > 0:
-            out[i] = out[i - 1]          # último punto: sin filas hacia adelante
+        lo = max(0, i - window + 1)
+        if i - lo >= 1:
+            out[i] = float(np.polyfit(x[lo:i + 1], y[lo:i + 1], 1)[0])
     return out
 
 
@@ -122,7 +120,7 @@ def initial_values(
     labels = np.floor(x + 1e-9).astype(int)          # clase k = [k, k+1)
     total = float(y.sum()) or 1.0
 
-    # "excel": curva cruda y PENDIENTE de 5 filas hacia adelante (hoja de Javier)
+    # "excel": curva cruda y PENDIENTE de las 5 filas anteriores (hoja de Javier)
     ys = y.astype(float) if derivada == "excel" else moving_average(y, window)
     if derivada == "excel":
         d1 = slope_excel(ys, x, window)
@@ -146,17 +144,25 @@ def initial_values(
     }
 
     # ── Modas: unión de los máximos, agrupando valores a ≤ merge_tol ──
-    cand = sorted(c["valor"] for k in ("d1_max", "d2_max", "d3_max") for c in cruces[k])
-    groups: list[list[int]] = []
-    for v in cand:
-        if groups and v - groups[-1][-1] <= merge_tol:
-            groups[-1].append(v)
+    # Cada candidato lleva el orden de su derivada (1, 2 o 3). En un grupo de
+    # cruces vecinos manda el de la derivada de menor orden (como en el
+    # ejemplo de Belén: 72 de la 1ª sobre 71 de la 2ª y la 3ª); a igualdad,
+    # el valor que se repite y, si no, el menor.
+    cand = sorted((c["valor"], orden) for orden, k in ((1, "d1_max"), (2, "d2_max"), (3, "d3_max"))
+                  for c in cruces[k])
+    groups: list[list[tuple[int, int]]] = []
+    for v, o in cand:
+        if groups and v - groups[-1][-1][0] <= merge_tol:
+            groups[-1].append((v, o))
         else:
-            groups.append([v])
+            groups.append([(v, o)])
     modas = []
     for g in groups:
-        reps = [v for v in set(g) if g.count(v) > 1]
-        modas.append(min(reps) if reps else min(g))
+        o_min = min(o for _, o in g)
+        vals = [v for v, o in g if o == o_min]
+        todos = [v for v, _ in g]
+        reps = [v for v in set(vals) if todos.count(v) > 1]
+        modas.append(min(reps) if reps else min(vals))
 
     saturacion = len(y) >= 3 and y[-1] > y[-2] > y[-3]
     top = int(labels[-1])
@@ -167,7 +173,9 @@ def initial_values(
     lims = sorted({c["valor"] for c in cruces["d3_min"]})
 
     def cum(b: float) -> float:
-        return float(y[x < b].sum()) / total
+        """% acumulado hasta el límite b, incluida la clase b (como en la
+        hoja de Javier: en Belén 28 → 0.088 %, 47 → 6.495 %, …)."""
+        return float(y[x < b + 1].sum()) / total
 
     # Entornos: [0, l1), [l1, l2), …, [ln, fin]
     inicio = int(labels[np.argmax(keep)]) if keep.any() else int(labels[0])   # donde empiezan los datos
