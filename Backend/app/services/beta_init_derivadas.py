@@ -4,7 +4,9 @@ Valores iniciales de las curvas Beta a partir de las derivadas de la FDP
 
 Pasos:
   1. Suavizar la FDP con un promedio móvil centrado de 5 puntos.
-  2. Calcular la 1ª, 2ª y 3ª derivada como la pendiente cada 5 puntos
+  2. Por defecto ("excel"), sin suavizar: cada derivada es la PENDIENTE de
+     Excel sobre 5 filas consecutivas hacia adelante, como en la hoja de
+     J. Rodríguez Yáñez. Opción "pendiente": calcular la 1ª, 2ª y 3ª derivada como la pendiente cada 5 puntos
      (y[i+2] − y[i−2]) / (x[i+2] − x[i−2]), igual que en la hoja de cálculo
      de J. Rodríguez Yáñez. Esa pendiente ya suaviza cada derivada.
   3. Modas candidatas: cruces de + a − de las tres derivadas. Los valores
@@ -53,6 +55,22 @@ def slope(y: np.ndarray, x: np.ndarray, window: int = 5) -> np.ndarray:
     return out
 
 
+def slope_excel(y: np.ndarray, x: np.ndarray, window: int = 5) -> np.ndarray:
+    """Como PENDIENTE() de Excel sobre `window` filas consecutivas hacia
+    adelante: la pendiente por mínimos cuadrados de los puntos i … i+4 se
+    asigna al punto i (así lo hace la hoja de J. Rodríguez Yáñez). Al final
+    de la serie la ventana se acorta."""
+    n = len(y)
+    out = np.zeros(n, dtype=float)
+    for i in range(n):
+        hi = min(n, i + window)
+        if hi - i >= 2:
+            out[i] = float(np.polyfit(x[i:hi], y[i:hi], 1)[0])
+        elif i > 0:
+            out[i] = out[i - 1]          # último punto: sin filas hacia adelante
+    return out
+
+
 def _crossings(d: np.ndarray, labels: np.ndarray, keep: np.ndarray, kind: str) -> list[dict]:
     """kind='max': de + a −; kind='min': de − a +."""
     out = []
@@ -96,7 +114,7 @@ def initial_values(
     sat_beta: float = 0.8,
     use_variance: bool = True,
     keep_frac: float = 0.002,
-    derivada: str = "pendiente",
+    derivada: str = "excel",
     una_moda_por_entorno: bool = True,
 ) -> dict:
     x = np.array([float(d["x"]) for d in fdp])
@@ -104,8 +122,13 @@ def initial_values(
     labels = np.floor(x + 1e-9).astype(int)          # clase k = [k, k+1)
     total = float(y.sum()) or 1.0
 
-    ys = moving_average(y, window)
-    if derivada == "pendiente":
+    # "excel": curva cruda y PENDIENTE de 5 filas hacia adelante (hoja de Javier)
+    ys = y.astype(float) if derivada == "excel" else moving_average(y, window)
+    if derivada == "excel":
+        d1 = slope_excel(ys, x, window)
+        d2 = slope_excel(d1, x, window)
+        d3 = slope_excel(d2, x, window)
+    elif derivada == "pendiente":
         d1 = slope(ys, x, window)
         d2 = slope(d1, x, window)
         d3 = slope(d2, x, window)

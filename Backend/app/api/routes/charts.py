@@ -142,8 +142,9 @@ def get_beta_init(
     paso_tabla:   float = Query(0.5, ge=0.1, le=1.0),
     sat_beta:     float = Query(0.8, gt=0.0, le=1.0),
     usar_varianza: bool = Query(True),
-    derivada:     str   = Query("pendiente", pattern="^(pendiente|gradiente)$",
-                                description="pendiente cada `ventana` puntos o diferencia de 1 punto"),
+    derivada:     str   = Query("excel", pattern="^(excel|pendiente|gradiente)$",
+                                description="excel: curva cruda y PENDIENTE de 5 filas hacia adelante; "
+                                            "pendiente: suavizada y pendiente centrada; gradiente: diferencia de 1 punto"),
     una_moda:     bool  = Query(True, description="una sola moda entre cada par de límites A–B"),
     ajustar:      bool  = Query(True),
     db: Session = Depends(get_db),
