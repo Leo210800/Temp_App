@@ -284,7 +284,8 @@ def initial_values(
     }
 
 
-def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0, maxiter: int = 3000) -> dict:
+def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0, maxiter: int = 3000,
+                   sat_beta_max: float | None = None) -> dict:
     """Ajuste SLSQP de la mezcla Beta generalizada partiendo de los valores
     iniciales. A y B pueden moverse ±free_ab puntos; los pesos suman 1.
 
@@ -326,8 +327,10 @@ def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0
             if c["saturacion"]:
                 a0, b0, Bs = sat_seed if sat_seed else (c["alpha"], c["beta_"], 101.0)
                 A0 = min(A0, 98.0)
+                b_hi = sat_beta_max if sat_beta_max else 5.0    # β < 1: saturación pegada a 100 %
+                b0 = min(b0, b_hi)
                 p0 += [a0, b0, A0, Bs]
-                bounds += [(1.05, 500.0), (0.05, 5.0), (max(60.0, A0 - 2 * free_ab), 98.0), (100.5, 115.0)]
+                bounds += [(1.05, 500.0), (0.05, b_hi), (max(60.0, A0 - 2 * free_ab), 98.0), (100.5, 115.0)]
             else:
                 p0 += [c["alpha"], c["beta_"], A0, B0]
                 bounds += [(1.05, 60.0), (1.05, 60.0), (A0 - free_ab, A0 + free_ab), (B0 - free_ab, B0 + free_ab)]

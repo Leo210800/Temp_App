@@ -55,7 +55,7 @@ function downloadCsv(name, rows) {
 }
 
 export default function BetaInitPanel({ stationId }) {
-  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true, derivada: 'excel', una_moda: true })
+  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true, derivada: 'excel', una_moda: true, sat_beta_menor_1: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -114,6 +114,10 @@ export default function BetaInitPanel({ stationId }) {
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
           <input type="checkbox" checked={opts.una_moda} onChange={e => set('una_moda')(e.target.checked)} />
           Una moda por entorno A–B
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
+          <input type="checkbox" checked={opts.sat_beta_menor_1} onChange={e => set('sat_beta_menor_1')(e.target.checked)} />
+          Saturación con β &lt; 1 en el ajuste
         </label>
       </div>
 

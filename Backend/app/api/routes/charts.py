@@ -146,6 +146,7 @@ def get_beta_init(
                                 description="excel: curva cruda y PENDIENTE de las 5 filas anteriores (hoja de Javier); "
                                             "pendiente: suavizada y pendiente centrada; gradiente: diferencia de 1 punto"),
     una_moda:     bool  = Query(True, description="una sola moda entre cada par de límites A–B"),
+    sat_beta_menor_1: bool = Query(True, description="la saturación conserva β < 1 en el ajuste"),
     ajustar:      bool  = Query(True),
     db: Session = Depends(get_db),
 ):
@@ -168,9 +169,10 @@ def get_beta_init(
     }
     out = {"init": init, "actual": actual, "fit": None}
     if ajustar and init["curvas"]:
-        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta, usar_varianza, derivada, una_moda)
+        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta, usar_varianza, derivada, una_moda, sat_beta_menor_1)
         if key not in _INIT_CACHE:
-            _INIT_CACHE[key] = fit_from_seeds(fdp, init["curvas"])
+            _INIT_CACHE[key] = fit_from_seeds(fdp, init["curvas"],
+                                              sat_beta_max=0.99 if sat_beta_menor_1 else None)
         out["fit"] = _INIT_CACHE[key]
     return out
 
