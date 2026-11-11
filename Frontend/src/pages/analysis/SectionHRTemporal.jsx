@@ -313,6 +313,56 @@ function TimeProfiles({ components, field, labels, xLabel }) {
 // Sección principal
 // ─────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
+// Mapa de calor de HR media (mes × hora), con el valor en cada celda
+// ─────────────────────────────────────────────────────────────
+function HRMeanHeatmap({ matrix }) {
+  const vals = matrix.flat().filter(v => v != null)
+  if (!vals.length) return null
+  const lo = Math.floor(d3.min(vals)), hi = Math.ceil(d3.max(vals))
+  const span = Math.max(1, hi - lo)
+  const colorOf = (v) => (v == null ? EMPTY_CELL : stepColor(null, Math.max(1e-6, (v - lo) / span)))
+  const edges = Array.from({ length: LEVELS + 1 }, (_, i) => lo + (span * i) / LEVELS)
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ borderCollapse: 'separate', borderSpacing: 2, fontSize: 10, minWidth: 760 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 34 }} />
+            {Array.from({ length: 24 }, (_, h) => (
+              <th key={h} style={{ color: '#8b94a6', fontWeight: 500, padding: '0 0 2px' }}>{String(h).padStart(2, '0')}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {matrix.map((row, mi) => (
+            <tr key={mi}>
+              <td style={{ color: '#8b94a6', paddingRight: 4 }}>{MONTHS[mi]}</td>
+              {row.map((v, h) => {
+                const bg = colorOf(v)
+                return (
+                  <td key={h} title={`${MONTHS[mi]} ${String(h).padStart(2, '0')}:00 → HR media ${v == null ? '—' : v.toFixed(1) + ' %'}`}
+                    style={{ background: bg, color: textOn(bg), textAlign: 'center', borderRadius: 3, padding: '5px 0', minWidth: 28, fontVariantNumeric: 'tabular-nums' }}>
+                    {v == null ? '' : v.toFixed(0)}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, fontSize: 10, color: '#8b94a6' }}>
+        {Array.from({ length: LEVELS }, (_, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: CLASS_COLORS[i] }} />
+            <b style={{ color: '#c7cdd8', fontWeight: 600 }}>{CLASS_NAMES[i]}</b> {edges[i].toFixed(0)}–{edges[i + 1].toFixed(0)} %
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // Tiempo de humectación: por periodo, por mes y mapa mes × hora
 // ─────────────────────────────────────────────────────────────
 const TOW_COLOR = '#38bdf8'
@@ -335,8 +385,15 @@ function TowCells({ items }) {
 function TowSummary({ data }) {
   const periods = data.periods.map(p => ({ label: p.label.split(' ')[0], value: p.tow_pct }))
   const months = data.months.map(m => ({ label: MONTHS[m.month - 1], value: m.tow_pct }))
+  const diff = data.tow_pct != null && data.tow_model_pct != null ? data.tow_pct - data.tow_model_pct : null
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Stat label="TOW datos (HR ≥ 80 %)" value={fmtPct(data.tow_pct, 1)} color="#38bdf8" />
+        <Stat label="TOW modelo (FDP ≥ 80 %)" value={fmtPct(data.tow_model_pct, 1)} color="#38bdf8" />
+        <Stat label="Diferencia datos − modelo" value={diff == null ? '—' : `${diff >= 0 ? '+' : ''}${diff.toFixed(2)} pts`}
+          color={diff != null && Math.abs(diff) <= 1 ? '#22c55e' : '#facc15'} />
+      </div>
       <div>
         <div style={{ fontSize: 12, color: '#8b94a6', marginBottom: 6, fontWeight: 600 }}>Por periodo del día (% de horas)</div>
         <TowCells items={periods} />
@@ -457,6 +514,16 @@ export default function SectionHRTemporal({ stationId, dateFrom, dateTo, modeloH
           <Card title="Densidad de HR por mes" subtitle="Una curva por mes, suavizada · época seca dic-abr, lluviosa may-nov">
             <OverlayCurves groups={data.months} keyName="month" colorOf={monthColor} labelOf={m => MONTHS[m - 1]} />
           </Card>
+
+          {/* 2a. HR media mes × hora */}
+          {data.hr_mean_matrix && (
+            <Card
+              title="HR media por mes y hora del día"
+              subtitle="Promedio de la humedad relativa (%) en cada celda mes × hora · 5 clases de igual ancho entre el mínimo y el máximo de la estación"
+            >
+              <HRMeanHeatmap matrix={data.hr_mean_matrix} />
+            </Card>
+          )}
 
           {/* 2b. Tiempo de humectación */}
           <Card

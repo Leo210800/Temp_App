@@ -257,6 +257,15 @@ def _tow_matrix(df: pd.DataFrame) -> list[list[float | None]]:
     ]
 
 
+def _hr_mean_matrix(df: pd.DataFrame) -> list[list[float | None]]:
+    """HR media (%) en cada celda mes × hora (12 × 24)."""
+    grid = df.groupby(["month", "hour"])["value"].mean()
+    return [
+        [round(float(grid[(m, h)]), 1) if (m, h) in grid.index else None for h in range(24)]
+        for m in range(1, 13)
+    ]
+
+
 def fit_global(df: pd.DataFrame, censor_sat: bool = True) -> dict:
     """Ajuste Beta sobre todos los datos (tarda ~20-30 s con 10 años horarios)."""
     return _fit(df["value"].to_numpy(dtype=float), censor_sat=censor_sat)
@@ -322,6 +331,7 @@ def analyze_hr_temporal(
         "tow_pct": _tow_pct(df),
         "tow_model_pct": _tow_model_pct(global_fit.get("fdp")) if global_fit else None,
         "tow_matrix": _tow_matrix(df),
+        "hr_mean_matrix": _hr_mean_matrix(df),
         "exclude_saturated": exclude_saturated,
         "dry_months": sorted(DRY_MONTHS),
         "day_hours": [min(DAY_HOURS), max(DAY_HOURS)],
