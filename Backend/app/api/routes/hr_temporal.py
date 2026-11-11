@@ -80,6 +80,9 @@ def _precalculated_fit(db: Session, station_id: str, variable: Variable) -> Opti
     }
 
 
+_MODELO_CACHE: dict = {}
+
+
 @router.get("/hr-temporal")
 def get_hr_temporal(
     station_id:        str           = Query(...),
@@ -96,8 +99,11 @@ def get_hr_temporal(
         # Modelo de derivadas sobre la FDP de todos los datos del rango.
         from app.services.beta_init_derivadas import model_from_derivadas
         from app.services.distribution_fitting import _build_fdp
-        fdp = _build_fdp(df["value"].to_numpy(dtype=float), 1.0)
-        betas, r2, mse, fdp_fit = model_from_derivadas(fdp)
+        key = (station_id, date_from, date_to, len(df))
+        if key not in _MODELO_CACHE:                   # el ajuste tarda ~15 s; se guarda en memoria
+            fdp = _build_fdp(df["value"].to_numpy(dtype=float), 1.0)
+            _MODELO_CACHE[key] = model_from_derivadas(fdp)
+        betas, r2, mse, fdp_fit = _MODELO_CACHE[key]
         global_fit = {"ok": True, "betas": betas, "r2": r2, "mse": mse, "fdp": fdp_fit} if betas else None
         out = analyze_hr_temporal(df, global_fit, exclude_saturated=exclude_saturated)
         out["global_fit_source"] = "derivadas" if global_fit else None
