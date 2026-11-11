@@ -10,6 +10,7 @@ import { stationsApi, measurementsApi } from '../services/api'
 import { Loader2, AlertTriangle, RefreshCw, Download, CloudSun } from 'lucide-react'
 import SectionHRTemporal from './analysis/SectionHRTemporal'
 import HRValidationPanel from './analysis/HRValidationPanel'
+import { BETA_COLORS } from './analysis/betaColors'
 import BetaInitPanel from './analysis/BetaInitPanel'
 
 const SPIN = { animation: 'spin 0.8s linear infinite' }
@@ -61,13 +62,7 @@ const GAUSS_COLORS = [
   '#a78bfa',
   '#facc15',
 ]
-const BETA_COLORS = [
-  '#8b94a6',
-  '#eab308',
-  '#38bdf8',
-  '#4ade80',
-  '#c084fc',
-]
+// BETA_COLORS: colores Beta compartidos, en analysis/betaColors.js
 const WB_COLORS = ['#4ade80', '#c084fc', '#f87171', '#38bdf8', '#facc15']  // viento (Weibull)
 const FDP_SUMA_COLOR  = '#e2e8f0'
 const FDP_FREC_COLOR  = '#ef4444'
@@ -812,7 +807,7 @@ const WeibullCards = ({ weibulls }) => (
   </div>
 )
 
-function SectionFDP({ stationId, dateFrom, dateTo }) {
+function SectionFDP({ stationId, dateFrom, dateTo, modeloHR = 'anterior' }) {
   const [tStats,  setTStats]  = useState(null)
   const [hStats,  setHStats]  = useState(null)
   const [wStats,  setWStats]  = useState(null)
@@ -827,7 +822,7 @@ function SectionFDP({ stationId, dateFrom, dateTo }) {
     try {
       const [t, h, w] = await Promise.all([
         measurementsApi.stats({ station_id: stationId, variable_code: 'TEMP', date_from: dateFrom, date_to: dateTo, n_components: 2 }),
-        measurementsApi.stats({ station_id: stationId, variable_code: 'HR',   date_from: dateFrom, date_to: dateTo, n_components: 5 }),
+        measurementsApi.stats({ station_id: stationId, variable_code: 'HR',   date_from: dateFrom, date_to: dateTo, n_components: 5, modelo: modeloHR }),
         measurementsApi.stats({ station_id: stationId, variable_code: 'VIENTO', date_from: dateFrom, date_to: dateTo }).catch(() => null),
       ])
       setTStats(t)
@@ -835,7 +830,7 @@ function SectionFDP({ stationId, dateFrom, dateTo }) {
       setWStats(w)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
-  }, [stationId, dateFrom, dateTo])
+  }, [stationId, dateFrom, dateTo, modeloHR])
 
   useEffect(() => { load() }, [load])
 
@@ -2827,6 +2822,7 @@ export default function Analysis() {
   const [stationAlt, setStationAlt] = useState(0)
   const [dateFrom,   setDateFrom]   = useState('')
   const [dateTo,     setDateTo]     = useState('')
+  const [modeloHR,   setModeloHR]   = useState('derivadas')   // modelo de las curvas Beta de HR
   const [activeTab,  setActiveTab]  = useState('overview')
   const [queried,    setQueried]    = useState(false)
 
@@ -2882,6 +2878,15 @@ export default function Analysis() {
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
             style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #272d37', background: '#0f1217', color: '#e7eaf0', fontSize: 13 }} />
         </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: '#5b6577', marginBottom: 5 }}>Modelo HR</label>
+          <select value={modeloHR} onChange={e => setModeloHR(e.target.value)}
+            title="Modelo de las curvas Beta de humedad relativa"
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #272d37', background: '#0f1217', color: '#e7eaf0', fontSize: 13 }}>
+            <option value="derivadas">Método de derivadas (7 Beta)</option>
+            <option value="anterior">Ajuste anterior (5 Beta)</option>
+          </select>
+        </div>
         <button
           onClick={() => setQueried(true)}
           disabled={!stationId}
@@ -2919,10 +2924,10 @@ export default function Analysis() {
       ) : (
         <>
           {activeTab === 'overview'       && <SectionOverview      stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
-          {activeTab === 'fdp'            && <SectionFDP           stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
+          {activeTab === 'fdp'            && <SectionFDP           stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} modeloHR={modeloHR} />}
           {activeTab === 'summary-table'  && <SectionSummaryTable  stationId={stationId} stationName={selectedStation?.name} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'data-table'     && <SectionDataTable     stationId={stationId} stationName={selectedStation?.name} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
-          {activeTab === 'hr-temporal'    && <SectionHRTemporal    stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
+          {activeTab === 'hr-temporal'    && <SectionHRTemporal    stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} modeloHR={modeloHR} />}
           {activeTab === 'isolines'       && <SectionIsolines      stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'daily-profile'  && <SectionDailyProfile  stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}
           {activeTab === 'annual-profile' && <SectionAnnualProfile stationId={stationId} dateFrom={dateFrom || undefined} dateTo={dateTo || undefined} />}

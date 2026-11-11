@@ -372,6 +372,60 @@ def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0
                   "err_max": float(np.max(np.abs(y - yhat))), "convergio": bool(res.success),
                   "area": round(float(yhat.sum()), 4)},
         "curvas": finales,
+        "params": [float(v) for v in p],
+        "componentes": [c.tolist() for c in comps(p)],
         "fdp": [{"x": float(xi), "real": float(yi), "inicial": float(ii), "modelo": float(mi)}
                 for xi, yi, ii, mi in zip(x, y, ini, yhat)],
     }
+
+
+# Opciones del "modelo por derivadas" que usa toda la app (FDP, validación,
+# TOW y análisis temporal b.3) cuando se elige ese modelo.
+MODELO_DERIVADAS = {
+    "derivada": "excel",          # curva cruda + PENDIENTE de las 5 filas anteriores
+    "una_moda_por_entorno": True,
+    "overlap": 6.0,               # solapamiento inicial de A y B (Javier usa 2)
+    "sat_beta_max": 0.99,         # la saturación conserva β < 1
+}
+
+
+def model_from_derivadas(fdp: list[dict], **opts) -> tuple[list[dict], float, float, list[dict]]:
+    """Modelo completo con el método de derivadas: valores iniciales + ajuste.
+
+    Devuelve lo mismo que `distribution_fitting._fit_beta_components`
+    (betas, r2, mse, fdp con "model", "error_range" y "beta1", "beta2", …),
+    para que el resto de la app lo use sin cambios."""
+    cfg = {**MODELO_DERIVADAS, **opts}
+    init = initial_values(fdp, derivada=cfg["derivada"],
+                          una_moda_por_entorno=cfg["una_moda_por_entorno"], overlap=cfg["overlap"])
+    if not init.get("curvas"):
+        return [], None, None, fdp
+    fit = fit_from_seeds(fdp, init["curvas"], sat_beta_max=cfg["sat_beta_max"])
+
+    total = float(sum(float(d["freq"]) for d in fdp)) or 1.0      # misma escala que "freq"
+    comps = [np.asarray(c) * total for c in fit["componentes"]]
+    y_model = np.sum(comps, axis=0)
+    y_real = np.array([float(d["freq"]) for d in fdp])
+
+    betas = []
+    for i, c in enumerate(fit["curvas"]):
+        a, b, A, B, w = fit["params"][5 * i:5 * i + 5]
+        width = max(B - A, 1e-6)
+        var01 = (a * b) / ((a + b) ** 2 * (a + b + 1.0))
+        betas.append({
+            "alpha": round(a, 4), "beta": round(b, 4), "A": round(A, 2), "B": round(B, 2),
+            "mode": float(np.clip(c["moda"], 0.0, 100.0)),
+            "variance": round(float(var01), 6), "variance_hr": round(float(var01 * width ** 2), 4),
+            "w": round(w, 4),
+        })
+    mse = float(np.mean((y_real - y_model) ** 2))
+    ss_tot = float(np.sum((y_real - y_real.mean()) ** 2)) or 1.0
+    r2 = round(1.0 - float(np.sum((y_real - y_model) ** 2)) / ss_tot, 4)
+    fdp_out = []
+    for j, d in enumerate(fdp):
+        point = {**d, "model": round(float(y_model[j]), 7),
+                 "error_range": round(float(y_real[j] - y_model[j]), 7)}
+        for i, yc in enumerate(comps):
+            point[f"beta{i + 1}"] = round(float(yc[j]), 7)
+        fdp_out.append(point)
+    return betas, r2, round(mse, 8), fdp_out

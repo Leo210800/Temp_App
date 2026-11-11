@@ -21,7 +21,7 @@ import { measurementsApi } from '../../services/api'
 const SPIN = { animation: 'spin 0.8s linear infinite' }
 const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 // Mismos colores que la pantalla de FDP (Beta 1..5)
-const BETA_COLORS = ['#8b94a6', '#eab308', '#38bdf8', '#4ade80', '#c084fc']
+import { BETA_COLORS } from './betaColors'
 const FREQ_COLOR = '#ef4444'
 const SUM_COLOR = '#e2e8f0'
 const X_TICKS = [0, 25, 50, 75, 100]
@@ -364,7 +364,7 @@ function TowSummary({ data }) {
   )
 }
 
-export default function SectionHRTemporal({ stationId, dateFrom, dateTo }) {
+export default function SectionHRTemporal({ stationId, dateFrom, dateTo, modeloHR = 'anterior' }) {
   const [excludeSat, setExcludeSat] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -378,12 +378,12 @@ export default function SectionHRTemporal({ stationId, dateFrom, dateTo }) {
     setLoading(true); setError(null); setFits({}); setFitErrors({})
     try {
       const res = await measurementsApi.hrTemporal({
-        station_id: stationId, date_from: dateFrom, date_to: dateTo, exclude_saturated: excludeSat,
+        station_id: stationId, date_from: dateFrom, date_to: dateTo, exclude_saturated: excludeSat, modelo: modeloHR,
       })
       setData(res)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
-  }, [stationId, dateFrom, dateTo, excludeSat])
+  }, [stationId, dateFrom, dateTo, excludeSat, modeloHR])
 
   useEffect(() => { load() }, [load])
 

@@ -23,7 +23,7 @@ import {
 } from 'recharts'
 import { Download } from 'lucide-react'
 
-const BETA_COLORS = ['#8b94a6', '#eab308', '#38bdf8', '#4ade80', '#c084fc']
+import { BETA_COLORS } from './betaColors'
 const FREQ_COLOR = '#ef4444'
 const SUM_COLOR = '#e2e8f0'
 const SCALE = 100                  // frecuencias × 100 = % de las horas por bin

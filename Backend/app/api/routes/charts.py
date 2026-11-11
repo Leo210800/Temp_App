@@ -37,6 +37,9 @@ from app.services.distribution_fitting import (
 router = APIRouter()
 
 
+_MODELO_CACHE: dict = {}
+
+
 @router.get("/stats")
 def get_stats(
     station_id:    str           = Query(...),
@@ -44,8 +47,35 @@ def get_stats(
     date_from:     Optional[str] = Query(None),
     date_to:       Optional[str] = Query(None),
     n_components:  int           = Query(2, ge=1, le=8),
+    modelo:        str           = Query("anterior", pattern="^(anterior|derivadas)$",
+                                         description="HR: 'derivadas' = método de derivadas (J. Rodríguez Yáñez)"),
     db: Session = Depends(get_db),
 ):
+    out = _get_stats_base(station_id, variable_code, date_from, date_to, n_components, db)
+    if modelo != "derivadas" or variable_code.strip().upper() != "HR" or not out.get("fdp"):
+        return out
+    return _con_modelo_derivadas(out, station_id)
+
+
+def _con_modelo_derivadas(out: dict, station_id: str) -> dict:
+    """Reemplaza el ajuste de 5 Beta por el modelo de derivadas sobre la misma FDP."""
+    from app.services.beta_init_derivadas import model_from_derivadas
+    fdp = [{"x": d["x"], "freq": d["freq"]} for d in out["fdp"]]
+    key = (station_id, out.get("n"), out.get("date_start"), out.get("date_end"))
+    if key not in _MODELO_CACHE:
+        _MODELO_CACHE[key] = model_from_derivadas(fdp)
+    betas, r2, mse, fdp_fit = _MODELO_CACHE[key]
+    if not betas:
+        return out
+    quality = _quality_flags(mse, r2, fdp_fit, error_target=1e-3)
+    w_sum = round(sum(b["w"] for b in betas), 4)
+    quality["weights_sum"] = w_sum
+    quality["weights_sum_ok"] = abs(w_sum - 1.0) < 0.01
+    return {**out, "betas": betas, "fdp": fdp_fit, "r2": r2, "mse": mse, "quality": quality,
+            "n_components": len(betas), "modelo": "derivadas"}
+
+
+def _get_stats_base(station_id, variable_code, date_from, date_to, n_components, db):
     import json
     from app.models.distribution_analysis import DistributionAnalysis
 

@@ -86,10 +86,23 @@ def get_hr_temporal(
     date_from:         Optional[str] = Query(None),
     date_to:           Optional[str] = Query(None),
     exclude_saturated: bool          = Query(False, description="Quita HR = 100 % de las curvas por periodo, hora y mes"),
+    modelo:            str           = Query("anterior", pattern="^(anterior|derivadas)$"),
     db: Session = Depends(get_db),
 ):
     variable = _hr_variable(db)
     df = _load_hr(db, station_id, variable, date_from, date_to)
+
+    if modelo == "derivadas":
+        # Modelo de derivadas sobre la FDP de todos los datos del rango.
+        from app.services.beta_init_derivadas import model_from_derivadas
+        from app.services.distribution_fitting import _build_fdp
+        fdp = _build_fdp(df["value"].to_numpy(dtype=float), 1.0)
+        betas, r2, mse, fdp_fit = model_from_derivadas(fdp)
+        global_fit = {"ok": True, "betas": betas, "r2": r2, "mse": mse, "fdp": fdp_fit} if betas else None
+        out = analyze_hr_temporal(df, global_fit, exclude_saturated=exclude_saturated)
+        out["global_fit_source"] = "derivadas" if global_fit else None
+        out["periods_available"] = [p["key"] for p in PERIODS]
+        return out
 
     # Sin filtro de fechas se reutiliza el ajuste global que ya muestra la
     # pantalla de FDP (mismo método, mismos datos). Con filtro se ajusta al
