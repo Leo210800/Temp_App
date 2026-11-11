@@ -315,6 +315,8 @@ function TimeProfiles({ components, field, labels, xLabel }) {
 // ─────────────────────────────────────────────────────────────
 // Mapa de calor de HR media (mes × hora), con el valor en cada celda
 // ─────────────────────────────────────────────────────────────
+const HR_CLASS_NAMES = ['Muy baja', 'Baja', 'Media', 'Alta', 'Muy alta']
+
 function HRMeanHeatmap({ matrix }) {
   const vals = matrix.flat().filter(v => v != null)
   if (!vals.length) return null
@@ -354,7 +356,7 @@ function HRMeanHeatmap({ matrix }) {
         {Array.from({ length: LEVELS }, (_, i) => (
           <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span style={{ width: 12, height: 12, borderRadius: 2, background: CLASS_COLORS[i] }} />
-            <b style={{ color: '#c7cdd8', fontWeight: 600 }}>{CLASS_NAMES[i]}</b> {edges[i].toFixed(0)}–{edges[i + 1].toFixed(0)} %
+            <b style={{ color: '#c7cdd8', fontWeight: 600 }}>{HR_CLASS_NAMES[i]}</b> {edges[i].toFixed(0)}–{edges[i + 1].toFixed(0)} %
           </span>
         ))}
       </div>
