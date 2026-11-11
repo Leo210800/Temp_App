@@ -7,7 +7,7 @@ import {
   ScatterChart, Scatter, ZAxis,
 } from 'recharts'
 import { stationsApi, measurementsApi } from '../services/api'
-import { Loader2, AlertTriangle, RefreshCw, Download, CloudSun } from 'lucide-react'
+import { Loader2, AlertTriangle, RefreshCw, Download, CloudSun, LayoutDashboard, BarChart3, CalendarClock, Thermometer, Wind } from 'lucide-react'
 import SectionHRTemporal from './analysis/SectionHRTemporal'
 import HRValidationPanel from './analysis/HRValidationPanel'
 import { BETA_COLORS } from './analysis/betaColors'
@@ -20,21 +20,95 @@ const MONTHS_NUM = [1,2,3,4,5,6,7,8,9,10,11,12]
 const HOURS      = Array.from({ length: 24 }, (_, i) => i)
 
 const TABS = [
-  { id: 'overview',       label: 'a) Visualización general'   },
-  { id: 'fdp',            label: 'b) FDP'                     },
-  { id: 'summary-table',  label: 'b.1) Tabla resumen'         },
-  { id: 'data-table',     label: 'b.2) Tabla base'            },
-  { id: 'hr-temporal',    label: 'b.3) HR temporal'           },
-  { id: 'isolines',       label: 'c.1) Mapa de calor'         },
-  { id: 'daily-profile',  label: 'c.2) Perfil diario'         },
-  { id: 'annual-profile', label: 'c.3) Perfil anual'          },
-  { id: 'daily-peaks',    label: 'c.4) Picos máximos'         },
-  { id: 'combined',       label: 'd) T × HR combinado'        },
-  { id: 'wind-rose',      label: 'e.1) Rosa de vientos'       },
-  { id: 'wind-rose-each', label: 'e.2) Rosa por viento'       },
-  { id: 'wind-year',      label: 'e.3) Viento × año'          },
-  { id: 'wind-hour',      label: 'e.4) Viento × hora'         },
+  { id: 'overview',       code: 'a',   label: 'Visualización general' },
+  { id: 'fdp',            code: 'b',   label: 'FDP'                   },
+  { id: 'summary-table',  code: 'b.1', label: 'Tabla resumen'         },
+  { id: 'data-table',     code: 'b.2', label: 'Tabla base'            },
+  { id: 'hr-temporal',    code: 'b.3', label: 'HR temporal'           },
+  { id: 'isolines',       code: 'c.1', label: 'Mapa de calor'         },
+  { id: 'daily-profile',  code: 'c.2', label: 'Perfil diario'         },
+  { id: 'annual-profile', code: 'c.3', label: 'Perfil anual'          },
+  { id: 'daily-peaks',    code: 'c.4', label: 'Picos máximos'         },
+  { id: 'combined',       code: 'd',   label: 'T × HR combinado'      },
+  { id: 'wind-rose',      code: 'e.1', label: 'Rosa de vientos'       },
+  { id: 'wind-rose-each', code: 'e.2', label: 'Rosa por viento'       },
+  { id: 'wind-year',      code: 'e.3', label: 'Viento × año'          },
+  { id: 'wind-hour',      code: 'e.4', label: 'Viento × hora'         },
 ]
+
+// Menú en dos niveles: grupo (arriba) → pestañas del grupo (abajo)
+const TAB_GROUPS = [
+  { id: 'general',  code: 'a', label: 'General',        hint: 'Resumen de todas las variables',      icon: LayoutDashboard, tabs: ['overview'] },
+  { id: 'fdp',      code: 'b', label: 'Distribuciones', hint: 'FDP, tablas y HR en el tiempo',        icon: BarChart3,       tabs: ['fdp', 'summary-table', 'data-table', 'hr-temporal'] },
+  { id: 'ciclos',   code: 'c', label: 'Ciclos',         hint: 'Mapa de calor, perfiles y picos',      icon: CalendarClock,   tabs: ['isolines', 'daily-profile', 'annual-profile', 'daily-peaks'] },
+  { id: 'combined', code: 'd', label: 'T × HR',         hint: 'Temperatura y humedad juntas',         icon: Thermometer,     tabs: ['combined'] },
+  { id: 'viento',   code: 'e', label: 'Viento',         hint: 'Rosas y dirección del viento',         icon: Wind,            tabs: ['wind-rose', 'wind-rose-each', 'wind-year', 'wind-hour'] },
+]
+const TAB_BY_ID = Object.fromEntries(TABS.map(t => [t.id, t]))
+const groupOfTab = (id) => TAB_GROUPS.find(g => g.tabs.includes(id)) ?? TAB_GROUPS[0]
+
+function AnalysisNav({ activeTab, onChange }) {
+  const group = groupOfTab(activeTab)
+  return (
+    <nav style={{ marginBottom: 20 }} aria-label="Secciones de análisis">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+        {TAB_GROUPS.map(g => {
+          const on = g.id === group.id
+          const Icon = g.icon
+          return (
+            <button key={g.id} onClick={() => !on && onChange(g.tabs[0])} title={g.hint}
+              aria-pressed={on}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                cursor: on ? 'default' : 'pointer', textAlign: 'left',
+                background: on ? 'var(--accent-bg)' : '#0f1217',
+                border: `1px solid ${on ? 'var(--accent-border)' : '#1e232c'}`,
+                transition: 'background .15s, border-color .15s',
+              }}>
+              <span style={{
+                display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                background: on ? 'var(--accent)' : '#161a21', color: on ? 'var(--accent-fg)' : '#8b94a6',
+              }}>
+                <Icon size={17} />
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: on ? '#e7eaf0' : '#c3c9d4' }}>
+                  <span style={{ color: on ? 'var(--accent)' : '#5b6577', marginRight: 6, fontWeight: 700 }}>{g.code}</span>{g.label}
+                </span>
+                <span style={{ display: 'block', fontSize: 11, color: '#5b6577', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {g.hint}
+                </span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {group.tabs.length > 1 && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 12, borderBottom: '1px solid #161a21' }}>
+          {group.tabs.map(id => {
+            const t = TAB_BY_ID[id]
+            const on = id === activeTab
+            return (
+              <button key={id} onClick={() => onChange(id)} aria-current={on ? 'page' : undefined} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 13, fontWeight: on ? 600 : 500,
+                cursor: 'pointer', background: 'none', border: 'none', marginBottom: -1,
+                color: on ? '#e7eaf0' : '#8b94a6',
+                borderBottom: `2px solid ${on ? 'var(--accent)' : 'transparent'}`,
+              }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
+                  background: on ? 'var(--accent-bg)' : '#161a21', color: on ? 'var(--accent)' : '#5b6577',
+                }}>{t.code}</span>
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </nav>
+  )
+}
 
 const fmt = (s) => {
   if (!s) return ''
@@ -2900,20 +2974,8 @@ export default function Analysis() {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 20, flexWrap: 'wrap', borderBottom: '1px solid #161a21', paddingBottom: 0 }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-            padding: '10px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer',
-            background: 'none', border: 'none',
-            color: activeTab === t.id ? 'var(--accent)' : '#8b94a6',
-            borderBottom: `2px solid ${activeTab === t.id ? 'var(--accent)' : 'transparent'}`,
-            marginBottom: -1,
-          }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Menú de secciones (dos niveles) */}
+      <AnalysisNav activeTab={activeTab} onChange={setActiveTab} />
 
       {/* Contenido por tab */}
       {!queried ? (
