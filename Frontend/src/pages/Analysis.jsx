@@ -38,11 +38,11 @@ const TABS = [
 
 // Menú en dos niveles: grupo (arriba) → pestañas del grupo (abajo)
 const TAB_GROUPS = [
-  { id: 'general',  code: 'a', label: 'General',        hint: 'Resumen de todas las variables',      icon: LayoutDashboard, tabs: ['overview'] },
-  { id: 'fdp',      code: 'b', label: 'Distribuciones', hint: 'FDP, tablas y HR en el tiempo',        icon: BarChart3,       tabs: ['fdp', 'summary-table', 'data-table', 'hr-temporal'] },
-  { id: 'ciclos',   code: 'c', label: 'Ciclos',         hint: 'Mapa de calor, perfiles y picos',      icon: CalendarClock,   tabs: ['isolines', 'daily-profile', 'annual-profile', 'daily-peaks'] },
-  { id: 'combined', code: 'd', label: 'T × HR',         hint: 'Temperatura y humedad juntas',         icon: Thermometer,     tabs: ['combined'] },
-  { id: 'viento',   code: 'e', label: 'Viento',         hint: 'Rosas y dirección del viento',         icon: Wind,            tabs: ['wind-rose', 'wind-rose-each', 'wind-year', 'wind-hour'] },
+  { id: 'general',  code: 'a', label: 'General',        hint: 'Todas las variables', icon: LayoutDashboard, tabs: ['overview'] },
+  { id: 'fdp',      code: 'b', label: 'Distribuciones', hint: 'FDP, tablas y HR temporal', icon: BarChart3,       tabs: ['fdp', 'summary-table', 'data-table', 'hr-temporal'] },
+  { id: 'ciclos',   code: 'c', label: 'Ciclos',         hint: 'Perfiles del día y del año', icon: CalendarClock,   tabs: ['isolines', 'daily-profile', 'annual-profile', 'daily-peaks'] },
+  { id: 'combined', code: 'd', label: 'T × HR',         hint: 'Temperatura con humedad', icon: Thermometer,     tabs: ['combined'] },
+  { id: 'viento',   code: 'e', label: 'Viento',         hint: 'Rosas y dirección', icon: Wind,            tabs: ['wind-rose', 'wind-rose-each', 'wind-year', 'wind-hour'] },
 ]
 const TAB_BY_ID = Object.fromEntries(TABS.map(t => [t.id, t]))
 const groupOfTab = (id) => TAB_GROUPS.find(g => g.tabs.includes(id)) ?? TAB_GROUPS[0]
@@ -51,7 +51,7 @@ function AnalysisNav({ activeTab, onChange }) {
   const group = groupOfTab(activeTab)
   return (
     <nav style={{ marginBottom: 20 }} aria-label="Secciones de análisis">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
         {TAB_GROUPS.map(g => {
           const on = g.id === group.id
           const Icon = g.icon
