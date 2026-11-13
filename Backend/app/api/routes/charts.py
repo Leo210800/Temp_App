@@ -170,13 +170,14 @@ def get_beta_init(
     peso_minimo:  float = Query(1.0, ge=0.0, le=10.0, description="% mínimo para conservar una curva"),
     solapamiento: float = Query(2.0, ge=0.0, le=10.0),
     paso_tabla:   float = Query(0.5, ge=0.1, le=1.0),
-    sat_beta:     float = Query(0.8, gt=0.0, le=1.0),
+    sat_beta:     float = Query(0.5, gt=0.0, le=1.0),
     usar_varianza: bool = Query(True),
     derivada:     str   = Query("excel", pattern="^(excel|pendiente|gradiente)$",
                                 description="excel: curva cruda y PENDIENTE de las 5 filas anteriores (hoja de Javier); "
                                             "pendiente: suavizada y pendiente centrada; gradiente: diferencia de 1 punto"),
     una_moda:     bool  = Query(True, description="una sola moda entre cada par de límites A–B"),
     sat_beta_menor_1: bool = Query(True, description="la saturación conserva β < 1 en el ajuste"),
+    orden:        int   = Query(3, ge=1, le=3, description="derivada más alta que se usa (1, 2 o 3)"),
     ajustar:      bool  = Query(True),
     db: Session = Depends(get_db),
 ):
@@ -192,14 +193,14 @@ def get_beta_init(
     init = initial_values(fdp, window=ventana, merge_tol=tolerancia, min_weight=peso_minimo / 100.0,
                           overlap=solapamiento, ab_step=paso_tabla, sat_beta=sat_beta,
                           use_variance=usar_varianza, derivada=derivada,
-                          una_moda_por_entorno=una_moda)
+                          una_moda_por_entorno=una_moda, orden=orden)
     actual = {
         "r2": stats.get("r2"), "emc": stats.get("mse"), "n_curvas": len(stats.get("betas") or []),
         "err_max": max((abs(float(d.get("freq", 0)) - float(d.get("model", 0))) for d in fdp), default=None),
     }
     out = {"init": init, "actual": actual, "fit": None}
     if ajustar and init["curvas"]:
-        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta, usar_varianza, derivada, una_moda, sat_beta_menor_1)
+        key = (station_id, stats.get("n"), ventana, tolerancia, peso_minimo, solapamiento, paso_tabla, sat_beta, usar_varianza, derivada, una_moda, sat_beta_menor_1, orden)
         if key not in _INIT_CACHE:
             _INIT_CACHE[key] = fit_from_seeds(fdp, init["curvas"],
                                               sat_beta_max=0.99 if sat_beta_menor_1 else None)

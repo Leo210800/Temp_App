@@ -80,18 +80,22 @@ def _crossings(d: np.ndarray, labels: np.ndarray, keep: np.ndarray, kind: str) -
     return out
 
 
-def _alpha_beta_table(step: float = 0.5, lo: float = 2.0, hi: float = 6.0) -> list[tuple[float, float, float]]:
+def _alpha_beta_table(step: float = 0.5, lo: float = 1.0, hi: float = 6.0) -> list[tuple[float, float, float]]:
+    """Tabla Moda–(α, β) de 1 a 6 (Javier, reunión de nov. 2026). Se omite
+    α = β = 1 (curva plana, sin moda)."""
     vals = np.round(np.arange(lo, hi + 1e-9, step), 4)
     rows = []
     for a in vals:
         for b in vals:
+            if a == 1.0 and b == 1.0:
+                continue
             rows.append((float(a), float(b), float((a - 1.0) / (a + b - 2.0))))
     return rows
 
 
 def seed_alpha_beta(pos_rel: float, step: float = 0.5) -> tuple[float, float]:
     """Pareja (α, β) cuya moda relativa es la más cercana a pos_rel sin pasarla;
-    a igualdad, la de valores más pequeños (≥ 2), como en el documento."""
+    a igualdad, la de valores más pequeños."""
     if abs(pos_rel - 0.5) < 1e-9:
         return 2.0, 2.0
     table = _alpha_beta_table(step)
@@ -109,12 +113,18 @@ def initial_values(
     overlap: float = 2.0,
     ab_step: float = 0.5,
     sat_alpha: float = 3.0,
-    sat_beta: float = 0.8,
+    sat_beta: float = 0.5,
     use_variance: bool = True,
     keep_frac: float = 0.002,
     derivada: str = "excel",
     una_moda_por_entorno: bool = True,
+    orden: int = 3,
 ) -> dict:
+    """`orden` = derivada más alta que se usa (1, 2 o 3). Las modas salen de
+    las derivadas hasta ese orden y los límites A/B, de los mínimos de esa
+    derivada. Javier recomienda empezar con 1 y subir solo si el ajuste no
+    alcanza el R² buscado."""
+    orden = max(1, min(3, int(orden)))
     x = np.array([float(d["x"]) for d in fdp])
     y = np.array([float(d["freq"]) for d in fdp])
     labels = np.floor(x + 1e-9).astype(int)          # clase k = [k, k+1)
@@ -142,14 +152,17 @@ def initial_values(
         "d3_max": _crossings(d3, labels, keep, "max"),
         "d3_min": _crossings(d3, labels, keep, "min"),
     }
+    if orden < 3:
+        dmin = d1 if orden == 1 else d2
+        cruces[f"d{orden}_min"] = _crossings(dmin, labels, keep, "min")
+    ordenes = [(o, f"d{o}_max") for o in (1, 2, 3) if o <= orden]
 
     # ── Modas: unión de los máximos, agrupando valores a ≤ merge_tol ──
     # Cada candidato lleva el orden de su derivada (1, 2 o 3). En un grupo de
     # cruces vecinos manda el de la derivada de menor orden (como en el
     # ejemplo de Belén: 72 de la 1ª sobre 71 de la 2ª y la 3ª); a igualdad,
     # el valor que se repite y, si no, el menor.
-    cand = sorted((c["valor"], orden) for orden, k in ((1, "d1_max"), (2, "d2_max"), (3, "d3_max"))
-                  for c in cruces[k])
+    cand = sorted((c["valor"], o) for o, k in ordenes for c in cruces[k])
     groups: list[list[tuple[int, int]]] = []
     for v, o in cand:
         if groups and v - groups[-1][-1][0] <= merge_tol:
@@ -170,7 +183,7 @@ def initial_values(
         modas = [m for m in modas if m < top - 1]
 
     # ── Límites (mínimos de la 3ª derivada) ───────────────────────
-    lims = sorted({c["valor"] for c in cruces["d3_min"]})
+    lims = sorted({c["valor"] for c in cruces[f"d{orden}_min"]})
 
     def cum(b: float) -> float:
         """% acumulado hasta el límite b, incluida la clase b (como en la
@@ -180,7 +193,7 @@ def initial_values(
     # Entornos: [0, l1), [l1, l2), …, [ln, fin]
     inicio = int(labels[np.argmax(keep)]) if keep.any() else int(labels[0])   # donde empiezan los datos
     edges = [inicio] + [l for l in lims if l > inicio] + [top + 1]
-    prioridad = [[c["valor"] for c in cruces[k]] for k in ("d1_max", "d2_max", "d3_max")]
+    prioridad = [[c["valor"] for c in cruces[k]] for _, k in ordenes]
 
     def mejor_moda(ms: list[int]) -> list[int]:
         """Una sola moda: la de la derivada de menor orden; a igualdad, la menor."""
@@ -280,7 +293,7 @@ def initial_values(
                        "solapamiento": overlap, "paso_tabla": ab_step,
                        "saturacion_alpha": sat_alpha, "saturacion_beta": sat_beta,
                        "usar_varianza": use_variance, "derivada": derivada,
-                       "una_moda_por_entorno": una_moda_por_entorno},
+                       "una_moda_por_entorno": una_moda_por_entorno, "orden": orden},
         "cruces": cruces,
         "modas": sorted({c["moda"] for c in out}),
         "modas_candidatas": sorted(set(modas + ([100] if saturacion else []))),
@@ -394,6 +407,7 @@ MODELO_DERIVADAS = {
     "una_moda_por_entorno": True,
     "overlap": 6.0,               # solapamiento inicial de A y B (Javier usa 2)
     "sat_beta_max": 0.99,         # la saturación conserva β < 1
+    "orden": 3,                   # derivada más alta (Belén necesita la 3ª)
 }
 
 
@@ -405,7 +419,8 @@ def model_from_derivadas(fdp: list[dict], **opts) -> tuple[list[dict], float, fl
     para que el resto de la app lo use sin cambios."""
     cfg = {**MODELO_DERIVADAS, **opts}
     init = initial_values(fdp, derivada=cfg["derivada"],
-                          una_moda_por_entorno=cfg["una_moda_por_entorno"], overlap=cfg["overlap"])
+                          una_moda_por_entorno=cfg["una_moda_por_entorno"], overlap=cfg["overlap"],
+                          orden=cfg["orden"])
     if not init.get("curvas"):
         return [], None, None, fdp
     fit = fit_from_seeds(fdp, init["curvas"], sat_beta_max=cfg["sat_beta_max"])

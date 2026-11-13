@@ -55,7 +55,7 @@ function downloadCsv(name, rows) {
 }
 
 export default function BetaInitPanel({ stationId }) {
-  const [opts, setOpts] = useState({ solapamiento: 6, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true, derivada: 'excel', una_moda: true, sat_beta_menor_1: true })
+  const [opts, setOpts] = useState({ solapamiento: 6, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.5, tolerancia: 1, orden: 3, usar_varianza: true, derivada: 'excel', una_moda: true, sat_beta_menor_1: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -81,7 +81,7 @@ export default function BetaInitPanel({ stationId }) {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#e7eaf0' }}>Valores iniciales por derivadas</div>
           <div style={{ fontSize: 11, color: '#8b94a6', marginTop: 2 }}>
-            Derivadas como PENDIENTE de 5 filas sobre la curva cruda · modas: cruces de + a − de la 1ª, 2ª y 3ª derivada (una por entorno) · A y B: cruces de − a + de la 3ª derivada · pesos por % acumulado · α y β por la posición de la moda.
+            Derivadas como PENDIENTE de 5 filas sobre la curva cruda · modas: cruces de + a − hasta la derivada elegida (una por entorno) · A y B: cruces de − a + de esa derivada · pesos por % acumulado · α y β por la posición de la moda.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }} data-html2canvas-ignore>
@@ -109,6 +109,15 @@ export default function BetaInitPanel({ stationId }) {
             <option value="excel">Curva cruda · PENDIENTE de 5 filas (Excel)</option>
             <option value="pendiente">Curva suavizada · pendiente centrada de 5 puntos</option>
             <option value="gradiente">Curva suavizada · punto a punto (anterior)</option>
+          </select>
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
+          Hasta la
+          <select value={opts.orden} onChange={e => set('orden')(Number(e.target.value))}
+            style={{ background: '#161a21', color: '#e7eaf0', border: '1px solid #272d37', borderRadius: 6, fontSize: 12, padding: '2px 4px' }}>
+            <option value={1}>1ª derivada</option>
+            <option value={2}>2ª derivada</option>
+            <option value={3}>3ª derivada</option>
           </select>
         </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b94a6' }}>
