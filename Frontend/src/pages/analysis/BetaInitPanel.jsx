@@ -55,7 +55,7 @@ function downloadCsv(name, rows) {
 }
 
 export default function BetaInitPanel({ stationId }) {
-  const [opts, setOpts] = useState({ solapamiento: 2, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true, derivada: 'excel', una_moda: true, sat_beta_menor_1: true })
+  const [opts, setOpts] = useState({ solapamiento: 6, peso_minimo: 1, paso_tabla: 0.5, sat_beta: 0.8, tolerancia: 1, usar_varianza: true, derivada: 'excel', una_moda: true, sat_beta_menor_1: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -145,14 +145,16 @@ export default function BetaInitPanel({ stationId }) {
           <Title>Valores iniciales de cada curva</Title>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#e7eaf0' }}>
-              <thead><tr>{['Beta', 'Moda', 'A', 'B', 'P (%)', 'Posición relativa', 'α', 'β', 'Ancho por varianza', 'A inicial', 'B inicial'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <thead><tr>{['Beta', 'Moda', 'A', 'B', 'P (%)', 'Posición relativa', 'α', 'β', '(B − A)/σ', 'Ancho por varianza', 'A inicial', 'B inicial', '(B − A)/σ inicial'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>{init.curvas.map(c => (
                 <tr key={c.beta}>
                   <td style={td}>{c.beta}{c.saturacion ? ' (sat.)' : ''}</td><td style={td}>{c.moda}</td><td style={td}>{c.A}</td><td style={td}>{c.B}</td>
                   <td style={td}>{c.p.toFixed(1)}</td><td style={td}>{c.pos_rel.toFixed(3)}</td><td style={td}>{c.alpha}</td><td style={td}>{c.beta_}</td>
+                  <td style={td}><Ratio r={c.ratio_sigma} /></td>
                   <td style={td}>{c.ancho_varianza ?? '—'}</td>
                   <td style={{ ...td, color: c.ensanchado ? '#facc15' : td.color }}>{c.A_sol}</td>
                   <td style={{ ...td, color: c.ensanchado ? '#facc15' : td.color }}>{c.B_sol}</td>
+                  <td style={td}><Ratio r={c.ratio_sigma_sol} /></td>
                 </tr>))}</tbody>
             </table>
           </div>
@@ -162,7 +164,7 @@ export default function BetaInitPanel({ stationId }) {
       {data && (
         <>
           <div style={{ fontSize: 11, color: '#5b6577', marginTop: 6 }}>
-            A y B iniciales = mínimos de la 3ª derivada abiertos por el solapamiento. En amarillo, los entornos que se ensancharon porque la varianza de los datos pide un ancho mayor.
+            A y B iniciales = mínimos de la 3ª derivada abiertos por el solapamiento. En amarillo, los entornos que se ensancharon porque la varianza de los datos pide un ancho mayor. (B − A)/σ con σ = desviación estándar de los datos del entorno: verde ≥ 4, amarillo entre 3 y 4, rojo &lt; 3 (revisar).
           </div>
           <Title>Comparación de los ajustes</Title>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -191,10 +193,10 @@ export default function BetaInitPanel({ stationId }) {
           <Title>Curvas después del ajuste</Title>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#e7eaf0' }}>
-              <thead><tr>{['Beta', 'Moda', 'A', 'B', 'P (%)', 'α', 'β'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <thead><tr>{['Beta', 'Moda', 'A', 'B', 'P (%)', 'α', 'β', '(B − A)/σ'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>{fit.curvas.map(c => (
                 <tr key={c.beta}><td style={td}>{c.beta}</td><td style={td}>{c.moda}</td><td style={td}>{c.A}</td><td style={td}>{c.B}</td>
-                  <td style={td}>{c.p.toFixed(1)}</td><td style={td}>{c.alpha}</td><td style={td}>{c.beta_}</td></tr>))}</tbody>
+                  <td style={td}>{c.p.toFixed(1)}</td><td style={td}>{c.alpha}</td><td style={td}>{c.beta_}</td><td style={td}><Ratio r={c.ratio_sigma} /></td></tr>))}</tbody>
             </table>
           </div>
           <div style={{ fontSize: 11, color: '#5b6577', marginTop: 6 }}>
@@ -205,6 +207,10 @@ export default function BetaInitPanel({ stationId }) {
     </div>
   )
 }
+
+// Criterio de Javier: (B − A)/σ ≥ 4 bien, 3–4 aceptable, < 3 revisar
+const ratioColor = (r) => (r == null ? '#5b6577' : r >= 4 ? '#22c55e' : r >= 3 ? '#facc15' : '#ef4444')
+const Ratio = ({ r }) => <span style={{ color: ratioColor(r), fontWeight: 600 }}>{r == null ? '—' : r.toFixed(1)}</span>
 
 const btn = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 8,

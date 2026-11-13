@@ -139,11 +139,11 @@ function PeriodPanel({ period, fit, fitting, fitError }) {
             labelFormatter={v => `HR ${v}%`}
             formatter={(v, name) => [Number(v).toFixed(5), name]}
           />
-          <Line dataKey="freq" name="Frecuencia" stroke={FREQ_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="freq" name="Frecuencia" stroke={FREQ_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} />
           {(fit?.betas ?? []).map((b, i) => (b.w >= W_MIN &&
-            <Line key={i} dataKey={`beta${i + 1}`} name={`Beta ${i + 1}`} stroke={BETA_COLORS[i]} strokeWidth={1.2} dot={false} isAnimationActive={false} />
+            <Line type="monotone" key={i} dataKey={`beta${i + 1}`} name={`Beta ${i + 1}`} stroke={BETA_COLORS[i]} strokeWidth={1.2} dot={false} isAnimationActive={false} />
           ))}
-          {fit && <Line dataKey="model" name="Beta suma" stroke={SUM_COLOR} strokeWidth={2.5} dot={false} isAnimationActive={false} />}
+          {fit && <Line type="monotone" dataKey="model" name="Beta suma" stroke={SUM_COLOR} strokeWidth={2.5} dot={false} isAnimationActive={false} />}
         </LineChart>
       </ResponsiveContainer>
       <div style={{ fontSize: 11, color: '#8b94a6', marginTop: 4, minHeight: 16 }}>
@@ -203,7 +203,7 @@ function OverlayCurves({ groups, keyName, colorOf, labelOf }) {
           {groups.map(g => {
             const k = g[keyName]
             return hidden.has(k) ? null : (
-              <Line key={k} dataKey={`g${k}`} name={labelOf(k)} stroke={colorOf(k)} strokeWidth={1.4} dot={false} isAnimationActive={false} />
+              <Line type="monotone" key={k} dataKey={`g${k}`} name={labelOf(k)} stroke={colorOf(k)} strokeWidth={1.4} dot={false} isAnimationActive={false} />
             )
           })}
         </LineChart>
@@ -301,7 +301,7 @@ function TimeProfiles({ components, field, labels, xLabel }) {
           <YAxis tick={axisTick} unit="%" />
           <Tooltip contentStyle={{ background: '#161a21', border: '1px solid #272d37', fontSize: 11 }} formatter={(v, n) => [`${Number(v).toFixed(1)}%`, n]} />
           {components.map((c, i) => (
-            <Line key={c.index} dataKey={`b${c.index}`} name={`Beta ${c.index}`} stroke={BETA_COLORS[i]} strokeWidth={1.6} dot={false} isAnimationActive={false} />
+            <Line type="monotone" key={c.index} dataKey={`b${c.index}`} name={`Beta ${c.index}`} stroke={BETA_COLORS[i]} strokeWidth={1.6} dot={false} isAnimationActive={false} />
           ))}
         </LineChart>
       </ResponsiveContainer>

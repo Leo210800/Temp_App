@@ -260,8 +260,14 @@ def initial_values(
             A_sol = max(float(labels[0]), c["moda"] - pos * ancho_var)
             B_sol = min(101.0, A_sol + ancho_var)
             ensanchado = True
+        # Criterio de J. Rodríguez Yáñez: (B − A)/σ ≥ 4 (entre 3 y 4 aceptable, < 3 revisar),
+        # con σ la desviación estándar de los datos del entorno.
+        sd = float(np.sqrt(vd)) if vd else None
+        ratio = round((B - A) / sd, 2) if (sd and not sat) else None
+        ratio_sol = round((B_sol - A_sol) / sd, 2) if (sd and not sat) else None
         out.append({
             "beta": i, "moda": int(c["moda"]), "A": A, "B": B,
+            "sigma_datos": round(sd, 2) if sd else None, "ratio_sigma": ratio, "ratio_sigma_sol": ratio_sol,
             "p": round(100 * c["p"], 2), "pos_rel": round(pos, 3),
             "alpha": a, "beta_": b, "saturacion": sat,
             "var01": round(var01, 4),
@@ -363,8 +369,10 @@ def fit_from_seeds(fdp: list[dict], curvas: list[dict], *, free_ab: float = 10.0
             moda = 100.0
         else:
             moda = A + (B - A) * (a - 1) / (a + b - 2) if a > 1 and b > 1 else (B if b < 1 else A)
+        var01 = a * b / ((a + b) ** 2 * (a + b + 1.0))
         finales.append({"beta": c["beta"], "alpha": round(a, 3), "beta_": round(b, 3), "A": round(A, 1),
-                        "B": round(B, 1), "p": round(100 * w, 2), "moda": round(moda, 1)})
+                        "B": round(B, 1), "p": round(100 * w, 2), "moda": round(moda, 1),
+                        "ratio_sigma": round(1.0 / float(np.sqrt(var01)), 2)})   # (B − A)/σ de la propia curva
     return {
         "inicial": {"r2": round(1 - ss_ini / ss_tot, 4), "emc": float(ss_ini / len(y)),
                     "err_max": float(np.max(np.abs(y - ini)))},
